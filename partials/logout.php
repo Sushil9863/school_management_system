@@ -1,34 +1,17 @@
 <?php
 session_start();
 
-// If confirmed, destroy the session
+// Confirm that user has clicked "Yes" in the modal
 if (isset($_GET['confirm']) && $_GET['confirm'] === 'yes') {
+    // Clear all session data
     $_SESSION = array();
     session_destroy();
-    header("Location: ../index.php"); 
+
+    // Redirect to login or homepage after logout
+    header("Location: ../index.php");
+    exit;
+} else {
+    // If accessed directly without confirmation, redirect to dashboard or prevent logout
+    header("Location: ../index.php");
     exit;
 }
-?>
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Logout</title>
-    <script>
-        window.onload = function () {
-            if (confirm("Are you sure you want to logout?")) {
-                window.location.href = "logout.php?confirm=yes";
-            } else {
-                const previousPage = document.referrer;
-                if (previousPage) {
-                    window.location.href = previousPage;
-                } else {
-                    window.location.href = "../index.php"; 
-                }
-            }
-        };
-    </script>
-</head>
-<body>
-</body>
-</html>

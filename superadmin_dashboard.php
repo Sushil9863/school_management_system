@@ -28,9 +28,12 @@ if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'superadmin') {
                 <li><a href="manage_users.php" class="block px-6 py-3 hover:bg-gray-200">👥 Manage Users</a></li>
                 <li><a href="settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>
                 <li>
-                    <form method="POST" action="partials/logout.php">
-                        <button class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
-                    </form>
+                    <!-- <button class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button> -->
+                    <!-- <form method="POST" action="partials/logout.php">
+                        <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
+                    </form> -->
+                    <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
+
                 </li>
             </ul>
         </nav>
@@ -126,5 +129,6 @@ if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'superadmin') {
     }
 </style>
 
+<?php include 'partials/logoutmodal.php'; ?>
 </body>
 </html>
