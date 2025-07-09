@@ -61,71 +61,99 @@
     </style>
 </head>
 <body>
-    <!-- Include database connection -->
-    <?php include 'partials/dbconnect.php'; ?>
 
-    <?php
-    session_start();
-    if ($_SERVER["REQUEST_METHOD"] == "POST") {
-        $username = $_POST['username'];
-        $password = $_POST['password'];
+<?php
+session_start();
+include 'partials/dbconnect.php';
 
-        // Validate login credentials
-        $sql = "SELECT * FROM users WHERE username='$username' AND password='$password'";
-        $result = $conn->query($sql);
+// Custom hashing function (same used when storing passwords)
+function custom_hash($password) {
+    $salt = 'XyZ@2025!abc123'; // more complex salt
+    $rounds = 3; // how many times to re-process
 
-        if ($result->num_rows > 0) {
-            // User found, set session variables
-            $row = $result->fetch_assoc();
-            $_SESSION['user_id'] = $row['id'];
-            $_SESSION['username'] = $row['username'];
-            $_SESSION['user_type'] = $row['type']; // superadmin, admin, teacher, parents, accountant
+    $result = $password;
 
-            // Redirect to dashboard based on user type
-            switch ($row['type']) {
-                case 'superadmin':
-                    header("Location: superadmin_dashboard.php");
-                    break;
-                case 'admin':
-                    header("Location: admin_dashboard.php");
-                    break;
-                case 'teacher':
-                    header("Location: teacher_dashboard.php");
-                    break;
-                case 'parents':
-                    header("Location: parents_dashboard.php");
-                    break;
-                case 'accountant':
-                    header("Location: accountant_dashboard.php");
-                    break;
-                default:
-                    echo "Invalid user type.";
-            }
-            exit();
-        } else {
-            echo "<script>alert('Invalid username or password');</script>";
+    for ($r = 0; $r < $rounds; $r++) {
+        $temp = '';
+        for ($i = 0; $i < strlen($result); $i++) {
+            $char = ord($result[$i]);
+            $saltChar = ord($salt[$i % strlen($salt)]);
+            $mix = ($char ^ $saltChar) + ($char << 1); // bitwise XOR and shift left
+            $hex = dechex($mix);
+            $temp .= $hex;
         }
+        // Append a base64 version of part of the hash
+        $base64 = base64_encode($temp);
+        $result = substr($temp, 0, 16) . substr($base64, -16);
     }
-    ?>
 
-    <!-- login form with best design -->
-    
-    <div class="login-container">
-        <h2>Login to Shikshalaya</h2>
-        <form action="" method="post">
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Login</button>
-            <div class="form-group">
-                <a href="forgot_password.php">Forgot Password?</a>
-            </div>
-        </form>
-    </div>
+    return strtoupper($result);
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+
+    $hashed_password = custom_hash($password);
+
+    // Use prepared statement for safety
+    $stmt = $conn->prepare("SELECT * FROM users WHERE username = ? AND password = ?");
+    $stmt->bind_param("ss", $username, $hashed_password);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result && $result->num_rows > 0) {
+        // User found
+        $row = $result->fetch_assoc();
+        $_SESSION['user_id'] = $row['id'];
+        $_SESSION['username'] = $row['username'];
+        $_SESSION['user_type'] = $row['type'];
+
+        switch ($row['type']) {
+            case 'superadmin':
+                header("Location: superadmin_dashboard.php");
+                break;
+            case 'admin':
+                header("Location: admin_dashboard.php");
+                break;
+            case 'teacher':
+                header("Location: teacher_dashboard.php");
+                break;
+            case 'parents':
+                header("Location: parents_dashboard.php");
+                break;
+            case 'accountant':
+                header("Location: accountant_dashboard.php");
+                break;
+            default:
+                echo "Invalid user type.";
+        }
+        exit();
+    } else {
+        echo "<script>alert('Invalid username or password');</script>";
+    }
+
+    $stmt->close();
+}
+?>
+
+<div class="login-container">
+    <h2>Login to Shikshalaya</h2>
+    <form action="" method="post">
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit">Login</button>
+        <div class="form-group">
+            <a href="forgot_password.php">Forgot Password?</a>
+        </div>
+    </form>
+</div>
+
 </body>
 </html>
