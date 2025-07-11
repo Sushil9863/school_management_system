@@ -25,6 +25,38 @@ function custom_hash($password) {
     return strtoupper($result);
 }
 
+
+if (isset($_GET['delete'])) {
+    $school_id = intval($_GET['delete']);
+    $stmt = $conn->prepare("SELECT admin_name FROM schools WHERE id = ?");
+    $stmt->bind_param("i", $school_id);
+    $stmt->execute();
+    $stmt->bind_result($admin_username);
+    $stmt->fetch();
+    $stmt->close();
+
+    $conn->begin_transaction();
+    try {
+        $stmt1 = $conn->prepare("DELETE FROM schools WHERE id = ?");
+        $stmt1->bind_param("i", $school_id);
+        $stmt1->execute();
+        $stmt1->close();
+
+        $stmt2 = $conn->prepare("DELETE FROM users WHERE username = ?");
+        $stmt2->bind_param("s", $admin_username);
+        $stmt2->execute();
+        $stmt2->close();
+
+        $conn->commit();
+        header("Location: manage_schools.php");
+        exit;
+    } catch (Exception $e) {
+        $conn->rollback();
+        echo "<p class='text-red-600'>Error: " . $e->getMessage() . "</p>";
+    }
+}
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $conn->real_escape_string($_POST['school_name']);
     $address = $conn->real_escape_string($_POST['address']);
@@ -57,36 +89,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
 
 ?>
-
+<style>
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(15px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+        }
+    </style>
 <main class="p-6">
     <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">Manage Schools</h1>
-        <button onclick="showSchoolModal()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            ➕ Add School
-        </button>
+        <h1 class="text-3xl font-bold text-blue-700">🏫 Manage Schools</h1>
+        <button onclick="showSchoolModal()" class="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold rounded-xl shadow hover:scale-105">➕ Add School</button>
     </div>
 
-    <div class="bg-white shadow rounded p-4 overflow-auto">
-        <table class="w-full text-left border-collapse">
+    <div class="glass bg-white/30 backdrop-blur-md p-6 rounded-xl shadow-xl overflow-auto">
+        <table class="w-full text-left text-sm">
             <thead>
-                <tr class="border-b">
+                <tr class="bg-blue-800 text-white">
                     <th class="py-2 px-4">ID</th>
-                    <th class="py-2 px-4">Name</th>
+                    <th class="py-2 px-4">School Name</th>
                     <th class="py-2 px-4">Address</th>
                     <th class="py-2 px-4">Phone</th>
-                    <th class="py-2 px-4">Email</th>
                     <th class="py-2 px-4">Admin</th>
+                    <th class="py-2 px-4">Action</th>
                 </tr>
             </thead>
             <tbody>
-                <?php while($row = $schools->fetch_assoc()): ?>
-                    <tr class="border-b hover:bg-gray-50">
-                        <td class="py-2 px-4"><?= htmlspecialchars($row['id']) ?></td>
+                <?php while ($row = $schools->fetch_assoc()): ?>
+                    <tr class="hover:bg-blue-50">
+                        <td class="py-2 px-4"><?= $row['id'] ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($row['name']) ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($row['address']) ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($row['phone']) ?></td>
-                        <td class="py-2 px-4"><?= htmlspecialchars($row['email']) ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($row['admin_name']) ?></td>
+                        <td class="py-2 px-4">
+                            <a href="?delete=<?= $row['id'] ?>" onclick="return confirm('Are you sure you want to delete this school?')" class="text-red-600 font-semibold hover:underline">Delete</a>
+                        </td>
                     </tr>
                 <?php endwhile; ?>
             </tbody>
@@ -94,39 +133,39 @@ $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
     </div>
 </main>
 
-<div id="schoolModal" class="hidden fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-50">
-    <div class="bg-white p-6 rounded shadow-lg w-full max-w-lg">
-        <h2 class="text-xl font-semibold mb-4">Add New School</h2>
+<div id="schoolModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl">
+        <h2 class="text-2xl font-bold text-white mb-4">➕ Add New School</h2>
         <form method="POST" action="">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-gray-700 mb-1">School Name</label>
-                    <input type="text" name="school_name" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>School Name</label>
+                    <input type='text' name='school_name' placeholder='School Name' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Address</label>
-                    <input type="text" name="address" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>Address</label>
+                    <input type='text' name='address' placeholder='Address' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Phone</label>
-                    <input type="text" name="phone" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>Phone</label>
+                    <input type='text' name='phone' placeholder='Phone' required pattern='^(97|98)\d{8}$' title='Phone must start with 97 or 98 and contain 10 digits' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Email</label>
-                    <input type="email" name="email" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>Email</label>
+                    <input type='email' name='email' placeholder='Email' required pattern='^[a-zA-Z0-9._%+-]+@gmail\.com$' title='Email must be a valid @gmail.com address' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Admin Username</label>
-                    <input type="text" name="admin_name" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>Admin Username</label>
+                    <input type='text' name='admin_name' placeholder='Admin Username' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
                 <div>
-                    <label class="block text-gray-700 mb-1">Admin Password</label>
-                    <input type="password" name="admin_password" required class="w-full px-3 py-2 border rounded">
+                    <label class='block text-white font-medium mb-1'>Admin Password</label>
+                    <input type='password' name='admin_password' placeholder='Admin Password' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
                 </div>
             </div>
-            <div class="flex justify-end space-x-2 mt-4">
-                <button type="button" onclick="hideSchoolModal()" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded">Cancel</button>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded">Add</button>
+            <div class="flex justify-end space-x-4 mt-6">
+                <button type="button" onclick="hideSchoolModal()" class="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 transition font-semibold">Cancel</button>
+                <button type="submit" class="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:scale-105 hover:shadow-xl transition font-semibold">Add</button>
             </div>
         </form>
     </div>

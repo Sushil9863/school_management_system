@@ -52,57 +52,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param("ssi", $new_username, $new_password, $user_id);
 
         if ($stmt->execute()) {
-            $message = "<p class='text-green-600 mb-4'>Credentials updated successfully.</p>";
+            $message = "<p class='text-green-600 font-medium mb-4'>✅ Credentials updated successfully.</p>";
             $current_username = $new_username;
             $_SESSION['username'] = $new_username;
         } else {
-            $message = "<p class='text-red-600 mb-4'>Error: " . $stmt->error . "</p>";
+            $message = "<p class='text-red-600 font-medium mb-4'>❌ Error: " . $stmt->error . "</p>";
         }
 
         $stmt->close();
     } else {
-        $message = "<p class='text-red-600 mb-4'>Invalid input or user not logged in.</p>";
+        $message = "<p class='text-red-600 font-medium mb-4'>⚠️ Invalid input or user not logged in.</p>";
     }
 }
 
 $conn->close();
 ?>
 
-<!-- SETTINGS CONTENT -->
-<div class="max-w-xl mx-auto mt-10 bg-white p-8 rounded shadow">
-    <h2 class="text-2xl font-semibold mb-6 text-gray-800">Change Username and Password</h2>
+<!-- Tailwind Settings Dialog -->
+<div class="max-w-xl mx-auto mt-16 px-6">
+    <div class="glass bg-white/30 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl p-8 transition hover:shadow-2xl hover:scale-[1.01]">
+        <h2 class="text-3xl font-bold text-blue-700 mb-6">🔐 Update Credentials</h2>
 
-    <?= $message ?>
+        <?= $message ?>
 
-    <form action="" method="post" class="space-y-6">
-        <div>
-            <label for="username" class="block mb-2 font-medium text-gray-700">Username:</label>
-            <input
-                type="text"
-                id="username"
-                name="username"
-                required
-                value="<?= htmlspecialchars($current_username) ?>"
-                class="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <form action="" method="post" class="space-y-6">
+            <div>
+                <label for="username" class="block text-gray-800 font-medium mb-2">Username</label>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    required
+                    value="<?= htmlspecialchars($current_username) ?>"
+                    class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all hover:border-blue-400"
+                >
+            </div>
+
+            <div>
+                <label for="password" class="block text-gray-800 font-medium mb-2">New Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    required
+                    class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all hover:border-blue-400"
+                >
+            </div>
+
+            <button
+                type="submit"
+                class="w-full py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
             >
-        </div>
-
-        <div>
-            <label for="password" class="block mb-2 font-medium text-gray-700">New Password:</label>
-            <input
-                type="password"
-                id="password"
-                name="password"
-                required
-                class="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-        </div>
-
-        <button
-            type="submit"
-            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded transition-colors duration-300"
-        >
-            Update Credentials
-        </button>
-    </form>
+                💾 Save Changes
+            </button>
+        </form>
+    </div>
 </div>
