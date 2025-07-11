@@ -13,7 +13,7 @@
   <!-- Main content -->
   <div class="flex-1 p-6 space-y-6 overflow-auto">
     <header class="flex justify-between items-center">
-      <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+      <h1 class="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
       <span class="text-sm text-gray-600" id="current-date">📅 </span>
     </header>
 

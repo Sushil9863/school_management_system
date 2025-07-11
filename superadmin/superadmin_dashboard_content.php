@@ -1,4 +1,4 @@
-<h1 class="text-2xl font-bold mb-6">Welcome, Super Admin</h1>
+<!-- <h1 class="text-2xl font-bold mb-6">Welcome, Super Admin</h1> -->
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
   <div class="p-6 bg-white shadow rounded">

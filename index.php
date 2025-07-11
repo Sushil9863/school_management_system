@@ -111,10 +111,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         switch ($row['type']) {
             case 'superadmin':
-                header("Location: superadmin_dashboard.php");
+                header("Location: superadmin/superadmin_dashboard.php");
                 break;
             case 'admin':
-                header("Location: admin_dashboard.php");
+                header("Location: admin/admin_dashboard.php");
                 break;
             case 'teacher':
                 header("Location: teacher_dashboard.php");

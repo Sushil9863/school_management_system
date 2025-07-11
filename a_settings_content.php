@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($stmt->execute()) {
             $message = "<p class='text-green-600 mb-4'>Credentials updated successfully.</p>";
             $current_username = $new_username;
-            $_SESSION['username'] = $new_username; // Update session too
+            $_SESSION['username'] = $new_username;
         } else {
             $message = "<p class='text-red-600 mb-4'>Error: " . $stmt->error . "</p>";
         }

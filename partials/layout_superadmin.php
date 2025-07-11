@@ -1,11 +1,10 @@
 <?php
 session_start();
-if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'admin') {
-    header("Location: ../../index.php");
+if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'superadmin') {
+    header("Location: <?= BASE_URL ?>/index.php");
     exit;
 }
-
-include_once 'partials/config.php';
+include 'config.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -20,16 +19,14 @@ include_once 'partials/config.php';
   <!-- Sidebar -->
   <aside id="sidebar" class="w-64 bg-white shadow-lg fixed z-30 h-full transform transition-transform duration-300 translate-x-0">
     <div class="p-6 border-b bg-blue-600 text-white">
-      <h1 class="text-xl font-bold">Admin</h1>
+      <h1 class="text-xl font-bold">Super Admin</h1>
     </div>
     <nav class="mt-4">
       <ul class="space-y-2 text-gray-700 font-medium">
-        <li><a href="admin_dashboard.php" class="block px-6 py-3 hover:bg-gray-200">🏠 Dashboard</a></li>
-        <li><a href="manage_students.php" class="block px-6 py-3 hover:bg-gray-200">👨‍🏫 Manage Students</a></li>
-        <li><a href="manage_classes.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Classes</a></li>
-        <li><a href="manage_exams.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Exam</a></li>
-        <li><a href="manage_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Result</a></li>
-        <li><a href="a_settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>
+        <li><a href='<?= BASE_URL ?>/superadmin/superadmin_dashboard.php' class="block px-6 py-3 hover:bg-gray-200">🏠 Dashboard</a></li>
+        <li><a href='<?= BASE_URL ?>/superadmin/manage_schools.php' class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Schools</a></li>
+        <!-- <li><a href="manage_users.php" class="block px-6 py-3 hover:bg-gray-200">👥 Manage Users</a></li> -->
+        <li><a href="<?= BASE_URL ?>/a_settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>
         <li>
           <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
         </li>
@@ -50,14 +47,14 @@ include_once 'partials/config.php';
         if (isset($contentFile) && file_exists($contentFile)) {
           include $contentFile;
         } else {
-          echo "<h1>Welcome, Super Admin</h1>";
+          // echo "<h1>Welcome, Super Admin</h1>";
         }
       ?>
     </main>
   </div>
 </div>
 
-<?php include 'partials\logoutmodal.php'; ?>
+<?php include 'logoutmodal.php'; ?>
 
 <script>
   function toggleSidebar() {

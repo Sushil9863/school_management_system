@@ -1,5 +1,5 @@
 <?php
-include 'partials/dbconnect.php';
+include '../partials/dbconnect.php';
 
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'superadmin') {
     header("Location: index.php");
