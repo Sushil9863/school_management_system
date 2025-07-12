@@ -1,6 +1,8 @@
 <?php
 include '../partials/layout_admin.php';
 
+echo "hlo";
+
 // Fetch all students with school name
 $query = "SELECT students.*, schools.name AS school_name 
           FROM students 
