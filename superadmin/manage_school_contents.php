@@ -6,7 +6,8 @@ if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'superadmin') {
     exit;
 }
 
-function custom_hash($password) {
+function custom_hash($password)
+{
     $salt = 'XyZ@2025!abc123';
     $rounds = 3;
     $result = $password;
@@ -90,17 +91,19 @@ $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
 
 ?>
 <style>
-        .glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(15px);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-        }
-    </style>
+    .glass {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(15px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+</style>
 <main class="p-6">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-blue-700">🏫 Manage Schools</h1>
-        <button onclick="showSchoolModal()" class="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold rounded-xl shadow hover:scale-105">➕ Add School</button>
+        <button onclick="showSchoolModal()"
+            class="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold rounded-xl shadow hover:scale-105">➕
+            Add School</button>
     </div>
 
     <div class="glass bg-white/30 backdrop-blur-md p-6 rounded-xl shadow-xl overflow-auto">
@@ -124,7 +127,9 @@ $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
                         <td class="py-2 px-4"><?= htmlspecialchars($row['phone']) ?></td>
                         <td class="py-2 px-4"><?= htmlspecialchars($row['admin_name']) ?></td>
                         <td class="py-2 px-4">
-                            <a href="?delete=<?= $row['id'] ?>" onclick="return confirm('Are you sure you want to delete this school?')" class="text-red-600 font-semibold hover:underline">Delete</a>
+                            <a href="?delete=<?= $row['id'] ?>"
+                                onclick="return confirm('Are you sure you want to delete this school?')"
+                                class="text-red-600 font-semibold hover:underline">Delete</a>
                         </td>
                     </tr>
                 <?php endwhile; ?>
@@ -133,41 +138,68 @@ $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
     </div>
 </main>
 
-<div id="schoolModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div class="glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl">
-        <h2 class="text-2xl font-bold text-white mb-4">➕ Add New School</h2>
-        <form method="POST" action="">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label class='block text-white font-medium mb-1'>School Name</label>
-                    <input type='text' name='school_name' placeholder='School Name' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
+<div id="schoolModal" onclick="outsideClick(event)"
+    class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="modalBox">
+        <div class="glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl 
+         transition duration-300 ease-in-out
+         hover:ring-4 hover:ring-blue-400 hover:ring-offset-2
+         hover:shadow-[0_0_30px_rgba(59,130,246,0.6)] filter hover:brightness-110">
+            <h2 class="text-2xl font-bold text-white mb-4">➕ Add New School</h2>
+            <form method="POST" action="">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class='block text-white font-medium mb-1'>School Name</label>
+                        <input type='text' name='school_name' placeholder='School Name' required pattern='.{3,}'
+                            title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
+                    <div>
+                        <label class='block text-white font-medium mb-1'>Address</label>
+                        <input type='text' name='address' placeholder='Address' required pattern='.{3,}'
+                            title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
+                    <div>
+                        <label class='block text-white font-medium mb-1'>Phone</label>
+                        <input type='text' name='phone' placeholder='Phone' required pattern='^(97|98)\d{8}$'
+                            title='Phone must start with 97 or 98 and contain 10 digits' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
+                    <div>
+                        <label class='block text-white font-medium mb-1'>Email</label>
+                        <input type='email' name='email' placeholder='Email' required
+                            pattern='^[a-zA-Z0-9._%+-]+@gmail\.com$' title='Email must be a valid @gmail.com address'
+                            class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
+                    <div>
+                        <label class='block text-white font-medium mb-1'>Admin Username</label>
+                        <input type='text' name='admin_name' placeholder='Admin Username' required pattern='.{3,}'
+                            title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
+                    <div>
+                        <label class='block text-white font-medium mb-1'>Admin Password</label>
+                        <input type='password' name='admin_password' placeholder='Admin Password' required
+                            pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 
+       focus:outline-none focus:ring-4 focus:ring-blue-500 focus:shadow-[0_0_20px_rgba(59,130,246,0.6)] 
+       hover:ring-2 hover:ring-blue-400 transition duration-300' />
+                    </div>
                 </div>
-                <div>
-                    <label class='block text-white font-medium mb-1'>Address</label>
-                    <input type='text' name='address' placeholder='Address' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
+                <div class="flex justify-end space-x-4 mt-6">
+                    <button type="button" onclick="hideSchoolModal()"
+                        class="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 transition font-semibold">Cancel</button>
+                    <button type="submit"
+                        class="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:scale-105 hover:shadow-xl transition font-semibold">Add</button>
                 </div>
-                <div>
-                    <label class='block text-white font-medium mb-1'>Phone</label>
-                    <input type='text' name='phone' placeholder='Phone' required pattern='^(97|98)\d{8}$' title='Phone must start with 97 or 98 and contain 10 digits' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
-                </div>
-                <div>
-                    <label class='block text-white font-medium mb-1'>Email</label>
-                    <input type='email' name='email' placeholder='Email' required pattern='^[a-zA-Z0-9._%+-]+@gmail\.com$' title='Email must be a valid @gmail.com address' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
-                </div>
-                <div>
-                    <label class='block text-white font-medium mb-1'>Admin Username</label>
-                    <input type='text' name='admin_name' placeholder='Admin Username' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
-                </div>
-                <div>
-                    <label class='block text-white font-medium mb-1'>Admin Password</label>
-                    <input type='password' name='admin_password' placeholder='Admin Password' required pattern='.{3,}' title='Minimum 3 characters' class='w-full px-4 py-2 rounded-lg bg-white/70 border border-white placeholder-gray-600 transition' />
-                </div>
-            </div>
-            <div class="flex justify-end space-x-4 mt-6">
-                <button type="button" onclick="hideSchoolModal()" class="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 transition font-semibold">Cancel</button>
-                <button type="submit" class="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:scale-105 hover:shadow-xl transition font-semibold">Add</button>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -178,4 +210,11 @@ $schools = $conn->query("SELECT * FROM schools ORDER BY id DESC");
     function hideSchoolModal() {
         document.getElementById('schoolModal').classList.add('hidden');
     }
+
+    function outsideClick(event) {
+    const modal = document.querySelector('.modalBox');
+    if (!modal.contains(event.target)) {
+      hideSchoolModal();
+    }
+  }
 </script>

@@ -191,7 +191,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <div class="login-container">
     <h2>Login to Shikshalaya</h2>
   <div class="logo-circle">
-    <img src="images/logo.png" alt="Shikshalaya Logo" />
+    <img src="Education.png" alt="Shikshalaya Logo" />
   </div>
   <form action="" method="post">
     <div class="form-group">
