@@ -26,7 +26,7 @@ include_once 'config.php';
       <ul class="space-y-2 text-gray-700 font-medium">
         <li><a href="<?= BASE_URL ?>/admin/admin_dashboard.php" class="block px-6 py-3 hover:bg-gray-200">🏠 Dashboard</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_students.php" class="block px-6 py-3 hover:bg-gray-200">👨‍🏫 Manage Students</a></li>
-        <li><a href="<?= BASE_URL ?>/amdin/manage_classes.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Classes</a></li>
+        <li><a href="<?= BASE_URL ?>/admin/manage_classes.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Classes</a></li>
         <li><a href="<?= BASE_URL ?>/admim/manage_exams.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Exam</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Manage Result</a></li>
         <li><a href="<?= BASE_URL ?>/a_settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>

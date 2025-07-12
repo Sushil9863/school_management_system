@@ -1,3 +1,5 @@
 <?php
 $pageTitle = "Manage Students";
-$contentFile = 'managestudents_content.php';
+$contentFile = 'manage_students_content.php';
+
+include '../partials/layout_admin.php';
