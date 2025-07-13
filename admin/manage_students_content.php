@@ -1,72 +1,82 @@
 <?php
 include '../partials/dbconnect.php';
 
-// Optional: secure access only to logged-in users (you can remove this if not needed)
-if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'admin') {
-    header("Location: ../index.php");
-    exit;
+// Fetch parents for dropdown
+$parent_result = $conn->query("SELECT id, full_name FROM parents ORDER BY full_name ASC");
+
+// Handle student form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $full_name = $_POST['full_name'];
+    $gender = $_POST['gender'];
+    $dob = $_POST['dob'];
+    $grade = $_POST['grade'];
+    $parent_id = $_POST['parent'];
+
+    $stmt = $conn->prepare("INSERT INTO students (full_name, gender, dob, grade, parent) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssssi", $full_name, $gender, $dob, $grade, $parent_id);
+    $stmt->execute();
 }
 
-// Fetch students with school names
-$query = "SELECT students.*, schools.name AS school_name 
-          FROM students 
-          LEFT JOIN schools ON students.school_id = schools.id 
-          ORDER BY students.created_at DESC";
-$result = $conn->query($query);
-
-// Fetch schools for dropdown
-$schools = $conn->query("SELECT id, name FROM schools");
+// Fetch students list
+$students = $conn->query("
+    SELECT s.*, p.full_name AS parent_name
+    FROM students s
+    LEFT JOIN parents p ON s.parent = p.id
+    ORDER BY s.id DESC
+");
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manage Students - Shikshalaya</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Students</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .glass {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 1rem;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+  </style>
 </head>
-<body class="bg-gray-100">
 
-  <div class="max-w-7xl mx-auto bg-white mt-8 rounded-lg shadow-md p-6">
-    <div class="flex justify-between items-center mb-4">
-      <h1 class="text-2xl font-bold text-gray-800">Manage Students</h1>
-      <button onclick="document.getElementById('addModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-        + Add Student
-      </button>
+<body class="bg-gradient-to-r from-blue-100 to-purple-100 min-h-screen p-6">
+  <div class="max-w-6xl mx-auto bg-white rounded-lg shadow p-6">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">🎓 Manage Students</h1>
+      <button onclick="document.getElementById('addModal').classList.remove('hidden')"
+        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">+ Add Student</button>
     </div>
 
     <div class="overflow-x-auto">
-      <table class="w-full table-auto border text-sm text-left text-gray-600">
-        <thead class="bg-gray-100 text-gray-700 font-semibold">
+      <table class="min-w-full bg-white border text-sm">
+        <thead class="bg-gray-100 text-gray-600 uppercase">
           <tr>
-            <th class="p-3">Name</th>
-            <th class="p-3">Gender</th>
-            <th class="p-3">DOB</th>
-            <th class="p-3">Grade</th>
-            <th class="p-3">School</th>
-            <th class="p-3">Status</th>
-            <th class="p-3 text-center">Actions</th>
+            <th class="py-3 px-6 text-left">Full Name</th>
+            <th class="py-3 px-6 text-left">Gender</th>
+            <th class="py-3 px-6 text-left">Date of Birth</th>
+            <th class="py-3 px-6 text-left">Grade</th>
+            <th class="py-3 px-6 text-left">Parent</th>
+            <th class="py-3 px-6 text-center">Action</th>
           </tr>
         </thead>
         <tbody>
-          <?php while ($row = $result->fetch_assoc()): ?>
-          <tr class="border-b hover:bg-gray-50">
-            <td class="p-3"><?= htmlspecialchars($row['full_name']) ?></td>
-            <td class="p-3"><?= htmlspecialchars($row['gender']) ?></td>
-            <td class="p-3"><?= htmlspecialchars($row['dob']) ?></td>
-            <td class="p-3"><?= htmlspecialchars($row['grade']) ?></td>
-            <td class="p-3"><?= $row['school_name'] ?? 'N/A' ?></td>
-            <td class="p-3">
-              <span class="px-2 py-1 text-xs rounded-full <?= $row['status'] === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' ?>">
-                <?= ucfirst($row['status']) ?>
-              </span>
-            </td>
-            <td class="p-3 text-center space-x-2">
-              <button class="bg-yellow-400 hover:bg-yellow-500 px-3 py-1 text-white rounded text-sm">Edit</button>
-              <button class="bg-red-500 hover:bg-red-600 px-3 py-1 text-white rounded text-sm">Delete</button>
-            </td>
-          </tr>
+          <?php while ($row = $students->fetch_assoc()): ?>
+            <tr class="border-t hover:bg-gray-50">
+              <td class="py-3 px-6"><?= htmlspecialchars($row['full_name']) ?></td>
+              <td class="py-3 px-6"><?= htmlspecialchars($row['gender']) ?></td>
+              <td class="py-3 px-6"><?= htmlspecialchars($row['dob']) ?></td>
+              <td class="py-3 px-6"><?= htmlspecialchars($row['grade']) ?></td>
+              <td class="py-3 px-6"><?= htmlspecialchars($row['parent_name']) ?></td>
+              <td class="py-3 px-6 text-center space-x-2">
+                <button class="bg-yellow-400 text-white px-3 py-1 rounded text-sm hover:bg-yellow-500">Edit</button>
+                <button class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">Delete</button>
+              </td>
+            </tr>
           <?php endwhile; ?>
         </tbody>
       </table>
@@ -74,65 +84,58 @@ $schools = $conn->query("SELECT id, name FROM schools");
   </div>
 
   <!-- Add Student Modal -->
-  <div id="addModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden z-50">
-    <div class="bg-white w-full max-w-lg rounded-lg p-6 relative shadow-xl">
-      <h2 class="text-xl font-semibold mb-4">Add New Student</h2>
-      <form action="insert_student.php" method="POST" class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
+  <div id="addModal" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+    <div class="glass p-8 rounded-xl w-full max-w-2xl">
+      <h2 class="text-xl font-semibold mb-6 text-white text-center">Add New Student</h2>
+      <form method="POST" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium">Full Name</label>
-            <input type="text" name="full_name" required class="w-full px-3 py-2 border rounded" />
+            <label class="block text-sm text-white mb-1">Full Name</label>
+            <input type="text" name="full_name" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white placeholder-white" />
           </div>
           <div>
-            <label class="block text-sm font-medium">Gender</label>
-            <select name="gender" required class="w-full px-3 py-2 border rounded">
-              <option value="">Select</option>
-              <option>Male</option>
-              <option>Female</option>
-              <option>Other</option>
+            <label class="block text-sm text-white mb-1">Gender</label>
+            <select name="gender" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white">
+              <option value="">-- Select --</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
             </select>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-4">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium">Date of Birth</label>
-            <input type="date" name="dob" required class="w-full px-3 py-2 border rounded" />
+            <label class="block text-sm text-white mb-1">Date of Birth</label>
+            <input type="date" name="dob" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white" />
           </div>
           <div>
-            <label class="block text-sm font-medium">Grade</label>
-            <input type="text" name="grade" required class="w-full px-3 py-2 border rounded" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium">Email</label>
-            <input type="email" name="email" class="w-full px-3 py-2 border rounded" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium">Phone</label>
-            <input type="text" name="phone" class="w-full px-3 py-2 border rounded" />
+            <label class="block text-sm text-white mb-1">Grade</label>
+            <input type="text" name="grade" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white" />
           </div>
         </div>
+
         <div>
-          <label class="block text-sm font-medium">Address</label>
-          <textarea name="address" class="w-full px-3 py-2 border rounded"></textarea>
-        </div>
-        <div>
-          <label class="block text-sm font-medium">School</label>
-          <select name="school_id" required class="w-full px-3 py-2 border rounded">
-            <option value="">Select School</option>
-            <?php while ($school = $schools->fetch_assoc()): ?>
-              <option value="<?= $school['id'] ?>"><?= htmlspecialchars($school['name']) ?></option>
+          <label class="block text-sm text-white mb-1">Parent</label>
+          <select name="parent" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white">
+            <option value="">-- Select Parent --</option>
+            <?php
+            $parent_result->data_seek(0);
+            while ($parent = $parent_result->fetch_assoc()): ?>
+              <option value="<?= $parent['id'] ?>">
+                <?= htmlspecialchars($parent['full_name']) ?>
+              </option>
             <?php endwhile; ?>
           </select>
         </div>
-        <div class="flex justify-end pt-2">
-          <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')" class="px-4 py-2 bg-gray-300 rounded mr-2">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+
+        <div class="flex justify-end mt-4">
+          <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')"
+            class="px-4 py-2 bg-white text-gray-700 rounded mr-2">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Add Student</button>
         </div>
       </form>
     </div>
   </div>
-
 </body>
 </html>
