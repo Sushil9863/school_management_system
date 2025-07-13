@@ -1,27 +1,29 @@
 <?php
 include '../partials/dbconnect.php';
 
-// Fetch parents for dropdown
+// Fetch parents and classes for dropdowns
 $parent_result = $conn->query("SELECT id, full_name FROM parents ORDER BY full_name ASC");
+$class_result = $conn->query("SELECT id, grade, section FROM classes ORDER BY grade ASC");
 
 // Handle student form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_name = $_POST['full_name'];
     $gender = $_POST['gender'];
     $dob = $_POST['dob'];
-    $grade = $_POST['grade'];
+    $class_id = $_POST['class_id'];
     $parent_id = $_POST['parent'];
 
     $stmt = $conn->prepare("INSERT INTO students (full_name, gender, dob, grade, parent) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssssi", $full_name, $gender, $dob, $grade, $parent_id);
+    $stmt->bind_param("sssii", $full_name, $gender, $dob, $class_id, $parent_id);
     $stmt->execute();
 }
 
-// Fetch students list
+// Fetch students list with class and parent info
 $students = $conn->query("
-    SELECT s.*, p.full_name AS parent_name
+    SELECT s.*, p.full_name AS parent_name, c.grade AS class_grade, c.section AS class_section
     FROM students s
     LEFT JOIN parents p ON s.parent = p.id
+    LEFT JOIN classes c ON s.grade = c.id
     ORDER BY s.id DESC
 ");
 ?>
@@ -59,7 +61,7 @@ $students = $conn->query("
             <th class="py-3 px-6 text-left">Full Name</th>
             <th class="py-3 px-6 text-left">Gender</th>
             <th class="py-3 px-6 text-left">Date of Birth</th>
-            <th class="py-3 px-6 text-left">Grade</th>
+            <th class="py-3 px-6 text-left">Class</th>
             <th class="py-3 px-6 text-left">Parent</th>
             <th class="py-3 px-6 text-center">Action</th>
           </tr>
@@ -70,7 +72,7 @@ $students = $conn->query("
               <td class="py-3 px-6"><?= htmlspecialchars($row['full_name']) ?></td>
               <td class="py-3 px-6"><?= htmlspecialchars($row['gender']) ?></td>
               <td class="py-3 px-6"><?= htmlspecialchars($row['dob']) ?></td>
-              <td class="py-3 px-6"><?= htmlspecialchars($row['grade']) ?></td>
+              <td class="py-3 px-6">Grade <?= htmlspecialchars($row['class_grade']) ?> - <?= htmlspecialchars($row['class_section']) ?></td>
               <td class="py-3 px-6"><?= htmlspecialchars($row['parent_name']) ?></td>
               <td class="py-3 px-6 text-center space-x-2">
                 <button class="bg-yellow-400 text-white px-3 py-1 rounded text-sm hover:bg-yellow-500">Edit</button>
@@ -110,8 +112,17 @@ $students = $conn->query("
             <input type="date" name="dob" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white" />
           </div>
           <div>
-            <label class="block text-sm text-white mb-1">Grade</label>
-            <input type="text" name="grade" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white" />
+            <label class="block text-sm text-white mb-1">Class</label>
+            <select name="class_id" required class="w-full px-4 py-2 rounded border border-white/30 bg-white/10 text-white">
+              <option value="">-- Select Class --</option>
+              <?php
+              $class_result->data_seek(0);
+              while ($class = $class_result->fetch_assoc()): ?>
+                <option value="<?= $class['id'] ?>">
+                  Grade <?= htmlspecialchars($class['grade']) ?> - Section <?= htmlspecialchars($class['section']) ?>
+                </option>
+              <?php endwhile; ?>
+            </select>
           </div>
         </div>
 
