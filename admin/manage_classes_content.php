@@ -381,20 +381,35 @@ if ($selected_class_id) {
 
   <!-- Delete Subject Modal -->
   <div id="deleteSubjectModal" onclick="closeOutside(event)"
-    class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div class="glass bg-white p-6 rounded-2xl shadow-xl w-full max-w-md" onclick="event.stopPropagation();">
-      <h2 class="text-xl font-bold text-gray-800 mb-4">❌ Confirm Delete</h2>
-      <p class="text-gray-700 mb-6">Are you sure you want to delete this subject?</p>
-      <form method="POST" class="flex justify-end gap-4">
+  class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+  <div class="modalBox">
+    <div class="glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-md
+      transition duration-300 ease-in-out
+      hover:ring-4 hover:ring-red-500 hover:ring-offset-2
+      hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] filter hover:brightness-110"
+      onclick="event.stopPropagation();">
+
+      <h2 class="text-2xl font-bold text-white mb-6 text-center">❌ Confirm Delete</h2>
+      <p class="text-white text-center mb-8">Are you sure you want to delete this subject?</p>
+
+      <form method="POST" class="flex justify-center gap-6">
         <input type="hidden" name="delete_subject" value="1">
         <input type="hidden" id="delete_subject_id" name="subject_id">
+
         <button type="button" onclick="document.getElementById('deleteSubjectModal').classList.add('hidden')"
-          class="bg-gray-300 px-4 py-2 rounded font-semibold">Cancel</button>
+          class="px-6 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 transition font-semibold">
+          Cancel
+        </button>
         <button type="submit"
-          class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-semibold">Delete</button>
+          class="px-6 py-2 rounded-lg bg-gradient-to-r from-red-600 to-red-700 text-white hover:scale-105 hover:shadow-xl transition font-semibold">
+          Delete
+        </button>
       </form>
+
     </div>
   </div>
+</div>
+
 
 
 
