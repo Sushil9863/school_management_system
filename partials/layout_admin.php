@@ -13,6 +13,18 @@ include_once 'config.php';
   <meta charset="UTF-8" />
   <title><?= htmlspecialchars($pageTitle ?? 'Dashboard') ?></title>
   <script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  /* Reusable modal box styling */
+.modalBox {
+  @apply glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl
+    transition duration-300 ease-in-out
+    hover:ring-4 hover:ring-blue-400 hover:ring-offset-2
+    hover:shadow-[0_0_30px_rgba(59,130,246,0.6)] filter hover:brightness-110;
+}
+
+</style>
+  
 </head>
 <body class="bg-gray-100 font-sans antialiased">
 
