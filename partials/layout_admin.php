@@ -40,6 +40,7 @@ include_once 'config.php';
         <li><a href="<?= BASE_URL ?>/admin/manage_classes.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Classes</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_students.php" class="block px-6 py-3 hover:bg-gray-200">🎓 Students</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_teachers.php" class="block px-6 py-3 hover:bg-gray-200">👨‍🏫 Teachers</a></li>
+        <li><a href="<?= BASE_URL ?>/admin/manage_payments.php" class="block px-6 py-3 hover:bg-gray-200">💰 Payments</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_parents.php" class="block px-6 py-3 hover:bg-gray-200">👨‍👩‍👧 Parents</a></li>
         <li><a href="<?= BASE_URL ?>/admim/manage_exams.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Exam</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Result</a></li>
