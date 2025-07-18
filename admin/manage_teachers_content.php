@@ -1,5 +1,7 @@
 <?php
-include '../partials/dbconnect.php';
+require '../partials/dbconnect.php';
+require '../vendor/autoload.php';
+use Dompdf\Dompdf;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -43,6 +45,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $teachers = $conn->query("SELECT * FROM teachers ORDER BY id DESC");
+
+if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
+    ob_start();
+    echo "<h2 style='text-align:center;'>Teacher List</h2><table border='1' cellpadding='8' cellspacing='0' style='width:100%; font-size:14px;'>";
+    echo "<thead><tr><th>Full Name</th><th>Address</th><th>Phone</th><th>Email</th><th>Username</th></tr></thead><tbody>";
+    foreach ($teachers as $row) {
+        echo "<tr>
+                <td>{$row['full_name']}</td>
+                <td>{$row['address']}</td>
+                <td>{$row['phone']}</td>
+                <td>{$row['email']}</td>
+                <td>{$row['username']}</td>
+              </tr>";
+    }
+    echo "</tbody></table>";
+    $html = ob_get_clean();
+
+    $dompdf = new Dompdf();
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    if (ob_get_length()) ob_end_clean();
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: inline; filename="teachers.pdf"');
+    echo $dompdf->output();
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -56,7 +86,10 @@ $teachers = $conn->query("SELECT * FROM teachers ORDER BY id DESC");
   <div class="max-w-6xl mx-auto bg-white rounded-lg shadow p-6">
     <div class="flex justify-between items-center mb-4">
       <h1 class="text-2xl font-bold text-gray-800">👩‍🏫 Manage Teachers</h1>
-      <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">+ Add Teacher</button>
+      <div>
+        <a href="?export=pdf" target="_blank" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">📄 Export PDF</a>
+        <button onclick="openAddModal()" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">+ Add Teacher</button>
+      </div>
     </div>
 
     <div class="mb-4">
@@ -92,7 +125,6 @@ $teachers = $conn->query("SELECT * FROM teachers ORDER BY id DESC");
       </tbody>
     </table>
   </div>
-
   <!-- Add/Edit Modal -->
   <div id="teacherModal" onclick="closeModal(event)" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
     <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-xl transition duration-300 ease-in-out
@@ -208,11 +240,9 @@ $teachers = $conn->query("SELECT * FROM teachers ORDER BY id DESC");
       document.getElementById("phone").value = data.phone;
       document.getElementById("email").value = data.email;
       document.getElementById("authFields").classList.add("hidden");
-
       const modalBox = document.getElementById("modalBox");
       modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
       modalBox.classList.add("hover:ring-green-400", "hover:shadow-[0_0_30px_rgba(34,197,94,0.6)]");
-
       document.getElementById("teacherModal").classList.remove("hidden");
     }
 

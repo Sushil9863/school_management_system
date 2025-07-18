@@ -1,6 +1,9 @@
 <?php
-include '../partials/dbconnect.php';
+require '../partials/dbconnect.php';
+require '../vendor/autoload.php';
+use Dompdf\Dompdf;
 
+// Handle form actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = $_POST['action'] ?? '';
 
@@ -10,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address = $_POST['address'];
     $email = $_POST['email'];
     $username = $_POST['username'];
-    $password = password_hash($_POST['password'] ?? '', PASSWORD_DEFAULT);
+    $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
 
     $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt1->bind_param("ssssss", $full_name, $contact, $address, $email, $username, $password);
@@ -23,49 +26,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   if ($action === 'edit') {
     $id = $_POST['parent_id'];
-    $full_name = $_POST['full_name'];
-    $contact = $_POST['contact'];
-    $address = $_POST['address'];
-    $email = $_POST['email'];
-    $username = $_POST['username'];
-
     $stmt = $conn->prepare("UPDATE parents SET full_name=?, contact=?, address=?, email=?, username=? WHERE id=?");
-    $stmt->bind_param("sssssi", $full_name, $contact, $address, $email, $username, $id);
+    $stmt->bind_param("sssssi", $_POST['full_name'], $_POST['contact'], $_POST['address'], $_POST['email'], $_POST['username'], $id);
     $stmt->execute();
+
+    $stmt2 = $conn->prepare("UPDATE users SET email=? WHERE username=(SELECT username FROM parents WHERE id=?)");
+    $stmt2->bind_param("si", $_POST['email'], $id);
+    $stmt2->execute();
   }
 
   if ($action === 'delete') {
     $id = $_POST['parent_id'];
-
     $res = $conn->query("SELECT username FROM parents WHERE id = $id");
-    $parent = $res->fetch_assoc();
-    $username = $parent['username'];
-
-    $conn->query("DELETE FROM users WHERE username = '$username' AND type = 'parent'");
+    $username = $res->fetch_assoc()['username'];
+    $conn->query("DELETE FROM users WHERE username = '$username' AND type='parent'");
     $conn->query("DELETE FROM parents WHERE id = $id");
   }
 }
 
+// Export PDF view in browser
+if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
+  $res = $conn->query("SELECT * FROM parents ORDER BY id DESC");
+  ob_start();
+  echo "<h2 style='text-align:center;'>Parent List</h2><table border='1' cellpadding='8' cellspacing='0' style='width:100%; font-size:14px;'>";
+  echo "<thead><tr><th>Full Name</th><th>Contact</th><th>Address</th><th>Email</th><th>Username</th></tr></thead><tbody>";
+  while ($row = $res->fetch_assoc()) {
+    echo "<tr>
+      <td>{$row['full_name']}</td>
+      <td>{$row['contact']}</td>
+      <td>{$row['address']}</td>
+      <td>{$row['email']}</td>
+      <td>{$row['username']}</td>
+    </tr>";
+  }
+  echo "</tbody></table>";
+  $html = ob_get_clean();
 
-// Fetch parents
+  $dompdf = new Dompdf();
+  $dompdf->loadHtml($html);
+  $dompdf->setPaper('A4', 'portrait');
+  $dompdf->render();
+  if (ob_get_length()) ob_end_clean();
+  header("Content-Type: application/pdf");
+  header("Content-Disposition: inline; filename=parents.pdf");
+  echo $dompdf->output();
+  exit;
+}
+
 $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <title>Manage Parents</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
-<body class="bg-gray-100 min-h-screen p-6">
+<body class="bg-gradient-to-r from-green-100 to-blue-100 min-h-screen p-6">
   <div class="max-w-6xl mx-auto bg-white rounded-lg shadow p-6">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-2xl font-bold text-gray-800">👨‍👩‍👧 Manage Parents</h1>
-      <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">+ Add
-        Parent</button>
+      <div>
+        <a href="?export=pdf" target="_blank" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">📄 Export PDF</a>
+        <button onclick="openAddModal()" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">+ Add Parent</button>
+      </div>
     </div>
 
     <div class="mb-4">
@@ -73,7 +98,7 @@ $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
         class="px-4 py-2 rounded border border-gray-300 shadow-sm w-full md:w-64">
     </div>
 
-    <table id="parentTable" class="min-w-full bg-white border text-sm">
+    <table class="min-w-full bg-white border text-sm">
       <thead class="bg-gray-100 text-gray-600 uppercase">
         <tr>
           <th class="py-3 px-6 text-left">Full Name</th>
@@ -86,92 +111,74 @@ $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
       </thead>
       <tbody>
         <?php while ($row = $parents->fetch_assoc()): ?>
-          <tr class="border-t hover:bg-gray-50">
-            <td class="py-3 px-6"><?= htmlspecialchars($row['full_name']) ?></td>
-            <td class="py-3 px-6"><?= htmlspecialchars($row['contact']) ?></td>
-            <td class="py-3 px-6"><?= htmlspecialchars($row['address']) ?></td>
-            <td class="py-3 px-6"><?= htmlspecialchars($row['email']) ?></td>
-            <td class="py-3 px-6"><?= htmlspecialchars($row['username']) ?></td>
-            <td class="py-3 px-6 text-center space-x-2">
-              <button onclick='openEditModal(<?= json_encode($row) ?>)'
-                class="bg-yellow-400 text-white px-3 py-1 rounded text-sm hover:bg-yellow-500">Edit</button>
-              <button onclick='openDeleteModal(<?= $row['id'] ?>)'
-                class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">Delete</button>
-            </td>
-          </tr>
+        <tr class="border-t hover:bg-gray-50">
+          <td class="py-3 px-6"><?= htmlspecialchars($row['full_name']) ?></td>
+          <td class="py-3 px-6"><?= htmlspecialchars($row['contact']) ?></td>
+          <td class="py-3 px-6"><?= htmlspecialchars($row['address']) ?></td>
+          <td class="py-3 px-6"><?= htmlspecialchars($row['email']) ?></td>
+          <td class="py-3 px-6"><?= htmlspecialchars($row['username']) ?></td>
+          <td class="py-3 px-6 text-center space-x-2">
+            <button onclick='openEditModal(<?= json_encode($row) ?>)' class="bg-yellow-400 text-white px-3 py-1 rounded text-sm hover:bg-yellow-500">Edit</button>
+            <button onclick='openDeleteModal(<?= $row['id'] ?>)' class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">Delete</button>
+          </td>
+        </tr>
         <?php endwhile; ?>
       </tbody>
     </table>
   </div>
 
   <!-- Add/Edit Modal -->
-  <div id="parentModal" onclick="closeModal(event)"
-    class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl transition duration-300 ease-in-out
-      hover:ring-4 hover:ring-offset-2 filter hover:brightness-110 bg-white/30 backdrop-blur-md"
-      onclick="event.stopPropagation();">
-      <h2 id="modalTitle" class="text-2xl font-bold mb-6 text-center text-white">➕ Add Parent</h2>
+  <div id="parentModal" onclick="closeModal(event)" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl transition duration-300 ease-in-out hover:ring-offset-2 hover:ring-4 bg-white/30 backdrop-blur-md" onclick="event.stopPropagation();">
+      <h2 id="modalTitle" class="text-2xl font-bold text-white mb-6 text-center">➕ Add Parent</h2>
       <form method="POST" class="space-y-4">
-        <input type="hidden" name="parent_id" id="parent_id">
         <input type="hidden" name="action" id="formAction" value="add">
+        <input type="hidden" name="parent_id" id="parent_id">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-white">
           <div>
             <label class="block font-medium">Full Name</label>
-            <input type="text" name="full_name" id="full_name" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="text" name="full_name" id="full_name" required class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
           <div>
             <label class="block font-medium">Contact</label>
-            <input type="text" name="contact" id="contact" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="text" name="contact" id="contact" required class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
           <div>
             <label class="block font-medium">Address</label>
-            <input type="text" name="address" id="address" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="text" name="address" id="address" required class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
           <div>
             <label class="block font-medium">Email</label>
-            <input type="email" name="email" id="email" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="email" name="email" id="email" required class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
           <div>
             <label class="block font-medium">Username</label>
-            <input type="text" name="username" id="username" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="text" name="username" id="username" required class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
           <div id="passwordDiv">
             <label class="block font-medium">Password</label>
-            <input type="password" name="password" id="password" required
-              class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
+            <input type="password" name="password" id="password" class="w-full px-4 py-2 border rounded bg-white/80 text-black" />
           </div>
         </div>
-        <div class="flex justify-end mt-4">
-          <button type="button" onclick="document.getElementById('parentModal').classList.add('hidden')"
-            class="px-4 py-2 bg-gray-300 rounded mr-2">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+        <div class="flex justify-end space-x-4 mt-4">
+          <button type="button" onclick="closeAllModals()" class="px-4 py-2 bg-gray-300 text-black rounded">Cancel</button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded hover:scale-105 hover:shadow-xl">Save</button>
         </div>
       </form>
     </div>
   </div>
 
   <!-- Delete Modal -->
-  <div id="deleteModal" onclick="closeModal(event)"
-    class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-md text-center transition duration-300 ease-in-out
-      hover:ring-4 hover:ring-red-400 hover:ring-offset-2
-      hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] filter hover:brightness-110 bg-white/30 backdrop-blur-md"
-      onclick="event.stopPropagation();">
+  <div id="deleteModal" onclick="closeModal(event)" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="p-8 rounded-2xl shadow-2xl w-full max-w-md text-center bg-white/30 backdrop-blur-md hover:ring-4 hover:ring-red-400 hover:ring-offset-2 hover:shadow-[0_0_30px_rgba(220,38,38,0.6)]" onclick="event.stopPropagation();">
       <form method="POST">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="parent_id" id="delete_id">
         <h3 class="text-xl font-bold text-white mb-4">⚠️ Confirm Deletion</h3>
         <p class="text-white mb-6">Are you sure you want to delete this parent?</p>
         <div class="flex justify-center space-x-4">
-          <button type="button" onclick="closeAllModals()"
-            class="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400 font-semibold">Cancel</button>
-          <button type="submit"
-            class="px-6 py-2 rounded bg-gradient-to-r from-red-600 to-pink-600 text-white hover:scale-105 hover:shadow-xl font-semibold">Delete</button>
+          <button type="button" onclick="closeAllModals()" class="px-4 py-2 bg-gray-300 rounded text-black">Cancel</button>
+          <button type="submit" class="px-6 py-2 bg-red-600 text-white rounded hover:scale-105 hover:shadow-xl">Delete</button>
         </div>
       </form>
     </div>
@@ -180,35 +187,21 @@ $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
   <script>
     function filterTable() {
       const filter = document.getElementById("searchInput").value.toLowerCase();
-      const rows = document.querySelectorAll("#parentTable tbody tr");
+      const rows = document.querySelectorAll("table tbody tr");
       rows.forEach(row => {
         const name = row.querySelector("td").textContent.toLowerCase();
         row.style.display = name.includes(filter) ? "" : "none";
       });
     }
 
-    function closeModal(e) {
-      if (e.target.id === "parentModal" || e.target.id === "deleteModal") {
-        e.target.classList.add("hidden");
-      }
-    }
-
     function openAddModal() {
       document.getElementById("modalTitle").innerText = "➕ Add Parent";
       document.getElementById("formAction").value = "add";
       document.getElementById("parent_id").value = "";
-      document.getElementById("full_name").value = "";
-      document.getElementById("contact").value = "";
-      document.getElementById("address").value = "";
-      document.getElementById("email").value = "";
-      document.getElementById("username").value = "";
-      document.getElementById("password").value = "";
-
-      // Show and make password required
+      ["full_name", "contact", "address", "email", "username", "password"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("passwordDiv").style.display = "block";
       document.getElementById("password").required = true;
-
-      document.getElementById("modalBox").classList.remove("ring-green-400");
+      document.getElementById("modalBox").classList.remove("hover:ring-green-400");
       document.getElementById("modalBox").classList.add("hover:ring-blue-400");
       document.getElementById("parentModal").classList.remove("hidden");
     }
@@ -222,11 +215,8 @@ $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
       document.getElementById("address").value = data.address;
       document.getElementById("email").value = data.email;
       document.getElementById("username").value = data.username;
-
-      // Hide and remove required from password
       document.getElementById("passwordDiv").style.display = "none";
       document.getElementById("password").required = false;
-
       document.getElementById("modalBox").classList.remove("hover:ring-blue-400");
       document.getElementById("modalBox").classList.add("hover:ring-green-400");
       document.getElementById("parentModal").classList.remove("hidden");
@@ -237,11 +227,14 @@ $parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
       document.getElementById("deleteModal").classList.remove("hidden");
     }
 
+    function closeModal(e) {
+      if (e.target.id === "parentModal" || e.target.id === "deleteModal") e.target.classList.add("hidden");
+    }
+
     function closeAllModals() {
       document.getElementById("parentModal").classList.add("hidden");
       document.getElementById("deleteModal").classList.add("hidden");
     }
   </script>
 </body>
-
 </html>
