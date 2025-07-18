@@ -168,13 +168,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 header("Location: admin/admin_dashboard.php");
                 break;
             case 'teacher':
-                header("Location: teacher_dashboard.php");
+                header("Location: teacher/teacher_dashboard.php");
                 break;
             case 'parents':
-                header("Location: parents_dashboard.php");
+                header("Location: parents/parents_dashboard.php");
                 break;
             case 'accountant':
-                header("Location: accountant_dashboard.php");
+                header("Location: accountant/accountant_dashboard.php");
                 break;
             default:
                 echo "Invalid user type.";

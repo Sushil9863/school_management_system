@@ -1,6 +1,27 @@
 <?php
 include '../partials/dbconnect.php';
 
+
+function custom_hash($password) {
+    $salt = 'XyZ@2025!abc123';
+    $rounds = 3;
+    $result = $password;
+    for ($r = 0; $r < $rounds; $r++) {
+        $temp = '';
+        for ($i = 0; $i < strlen($result); $i++) {
+            $char = ord($result[$i]);
+            $saltChar = ord($salt[$i % strlen($salt)]);
+            $mix = ($char ^ $saltChar) + ($char << 1);
+            $hex = dechex($mix);
+            $temp .= $hex;
+        }
+        $base64 = base64_encode($temp);
+        $result = substr($temp, 0, 16) . substr($base64, -16);
+    }
+    return strtoupper($result);
+}
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = $_POST['action'] ?? '';
 
@@ -10,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address = $_POST['address'];
     $email = $_POST['email'];
     $username = $_POST['username'];
-    $password = password_hash($_POST['password'] ?? '', PASSWORD_DEFAULT);
+    $password = custom_hash($_POST['password']);
 
     $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt1->bind_param("ssssss", $full_name, $contact, $address, $email, $username, $password);

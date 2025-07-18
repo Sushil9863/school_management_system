@@ -9,7 +9,7 @@ if (!isset($_SESSION['username']) || !isset($_SESSION['user_type'])) {
 
 // include 'partials/config.php';
 $pageTitle = "Settings";
-$contentFile = 'a_settings_content.php'; // This file holds the settings form and logic
+$contentFile = 'a_settings_content.php'; 
 
 switch ($_SESSION['user_type']) {
     case 'superadmin':
@@ -17,6 +17,12 @@ switch ($_SESSION['user_type']) {
         break;
         case 'admin':
         include 'partials/layout_admin.php';
+        break;
+        case 'teacher':
+        include 'partials/layout_teacher.php';
+        break;
+        case 'accountant':
+        include 'partials/layout_accountant.php';
         break;
     // Add more user types if needed
     default:
