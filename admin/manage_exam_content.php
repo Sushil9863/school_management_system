@@ -1,215 +1,382 @@
 <?php
 include '../partials/dbconnect.php';
-session_start();
 
-// Check teacher session
-if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'teacher') {
-  header("Location: ../index.php");
-  exit;
-}
+// Handle add/edit/delete
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $action = $_POST['action'] ?? '';
 
-$teacher_username = $_SESSION['username'];
+  if ($action === 'add') {
+    $exam_name = $_POST['exam_name'] ?? '';
+    $class_id = $_POST['class_id'] ?? '';
+    $exam_type = 'Terminal';
+    $subject_ids = $_POST['subject_id'] ?? [];
+    $full_marks = $_POST['full_marks'] ?? [];
+    $pass_marks = $_POST['pass_marks'] ?? [];
 
-// Get teacher info
-$stmt = $conn->prepare("SELECT id, full_name FROM teachers WHERE username = ?");
-$stmt->bind_param("s", $teacher_username);
-$stmt->execute();
-$result = $stmt->get_result();
-$teacher = $result->fetch_assoc();
-$teacher_id = $teacher['id'];
-$teacher_name = $teacher['full_name'];
+    if (empty($exam_name) || empty($class_id) || empty($subject_ids)) {
+      echo "<script>alert('Please fill all required fields.'); window.history.back();</script>";
+      exit;
+    }
 
-// Fetch all classes and subjects assigned to this teacher
-$stmt = $conn->prepare("
-    SELECT 
-      c.id AS class_id, c.grade, c.section, c.type,
-      s.id AS subject_id, s.name AS subject_name
-    FROM subjects s
-    JOIN classes c ON s.class_id = c.id
-    WHERE s.teacher_id = ?
-    ORDER BY c.grade ASC, c.section ASC, s.name ASC
-");
-$stmt->bind_param("i", $teacher_id);
-$stmt->execute();
-$assigned = $stmt->get_result();
+    if ($class_id === 'all') {
+      // Build name-to-marks map (subjects can differ by ID across classes)
+      $marksMap = [];
+      foreach ($subject_ids as $i => $sid) {
+        $res = $conn->query("SELECT name FROM subjects WHERE id = " . (int)$sid);
+        if ($row = $res->fetch_assoc()) {
+          $marksMap[$row['name']] = [
+            'full' => (int)$full_marks[$i],
+            'pass' => (int)$pass_marks[$i]
+          ];
+        }
+      }
 
-// Fetch exams grouped by class_id
-$classIds = [];
-foreach ($assigned as $row) {
-  $classIds[] = $row['class_id'];
-}
-$classIds = array_unique($classIds);
+      // Create separate exam for each class
+      $class_q = $conn->query("SELECT id FROM classes");
+      while ($cls = $class_q->fetch_assoc()) {
+        $cid = $cls['id'];
+        $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, created_at) VALUES (?, ?, ?, NOW())");
+        $stmt->bind_param("ssi", $exam_name, $exam_type, $cid);
+        $stmt->execute();
+        $exam_id = $stmt->insert_id;
 
-$examsByClass = [];
-if (!empty($classIds)) {
-  $placeholders = implode(',', array_fill(0, count($classIds), '?'));
-  $types = str_repeat('i', count($classIds));
+        $sub_q = $conn->query("SELECT id, name FROM subjects WHERE class_id = $cid");
+        while ($sub = $sub_q->fetch_assoc()) {
+          $sid = $sub['id'];
+          $name = $sub['name'];
+          $fm = $marksMap[$name]['full'] ?? 0;
+          $pm = $marksMap[$name]['pass'] ?? 0;
 
-  $sql = "SELECT * FROM exams WHERE class_id IN ($placeholders) ORDER BY class_id, created_at DESC";
-  $stmtExams = $conn->prepare($sql);
-  $stmtExams->bind_param($types, ...$classIds);
-  $stmtExams->execute();
-  $examsResult = $stmtExams->get_result();
+          $ins = $conn->prepare("INSERT INTO exam_subjects (exam_id, subject_id, full_marks, pass_marks) VALUES (?, ?, ?, ?)");
+          $ins->bind_param("iiii", $exam_id, $sid, $fm, $pm);
+          $ins->execute();
+        }
+      }
+    } else {
+      // Single class exam
+      $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, created_at) VALUES (?, ?, ?, NOW())");
+      $stmt->bind_param("ssi", $exam_name, $exam_type, $class_id);
+      $stmt->execute();
+      $exam_id = $stmt->insert_id;
 
-  while ($exam = $examsResult->fetch_assoc()) {
-    $examsByClass[$exam['class_id']][] = $exam;
+      foreach ($subject_ids as $i => $sid) {
+        $fm = (int)$full_marks[$i];
+        $pm = (int)$pass_marks[$i];
+        $ins = $conn->prepare("INSERT INTO exam_subjects (exam_id, subject_id, full_marks, pass_marks) VALUES (?, ?, ?, ?)");
+        $ins->bind_param("iiii", $exam_id, $sid, $fm, $pm);
+        $ins->execute();
+      }
+    }
+    header("Location: manage_exams.php");
+    exit;
+  }
+
+  elseif ($action === 'edit') {
+    $exam_id = $_POST['exam_id'] ?? 0;
+    $name = $_POST['exam_name'] ?? '';
+    $class_id = $_POST['class_id'] ?? '';
+    $subject_ids = $_POST['subject_id'] ?? [];
+    $full_marks = $_POST['full_marks'] ?? [];
+    $pass_marks = $_POST['pass_marks'] ?? [];
+
+    if (empty($exam_id) || empty($name) || empty($class_id)) {
+      echo "<script>alert('Missing data.'); window.history.back();</script>";
+      exit;
+    }
+
+    $stmt = $conn->prepare("UPDATE exams SET exam_name = ?, class_id = ? WHERE id = ?");
+    $stmt->bind_param("sii", $name, $class_id, $exam_id);
+    $stmt->execute();
+
+    $conn->query("DELETE FROM exam_subjects WHERE exam_id = " . (int)$exam_id);
+
+    foreach ($subject_ids as $i => $sid) {
+      $fm = (int)$full_marks[$i];
+      $pm = (int)$pass_marks[$i];
+      $ins = $conn->prepare("INSERT INTO exam_subjects (exam_id, subject_id, full_marks, pass_marks) VALUES (?, ?, ?, ?)");
+      $ins->bind_param("iiii", $exam_id, $sid, $fm, $pm);
+      $ins->execute();
+    }
+    header("Location: manage_exams.php");
+    exit;
+  }
+
+  elseif ($action === 'delete') {
+    $exam_id = $_POST['exam_id'] ?? 0;
+    $conn->query("DELETE FROM exam_subjects WHERE exam_id = " . (int)$exam_id);
+    $conn->query("DELETE FROM exams WHERE id = " . (int)$exam_id);
+    header("Location: manage_exams.php");
+    exit;
   }
 }
 
-// Group subjects by class_id
-$subjectsByClass = [];
-foreach ($assigned as $row) {
-  $subjectsByClass[$row['class_id']][] = $row;
-}
+$class_filter = $_GET['filter_class'] ?? 'all';
+$where = ($class_filter !== 'all') ? "WHERE classes.id = " . (int)$class_filter : '';
+$exams = $conn->query("
+  SELECT exams.*, classes.grade, classes.section 
+  FROM exams 
+  JOIN classes ON exams.class_id = classes.id
+  $where
+  ORDER BY exams.id DESC
+");
+$class_result = $conn->query("SELECT * FROM classes ORDER BY grade ASC");
+$all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY name");
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Teacher Exams & Marks Entry</title>
+  <title>Manage Exams</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen p-6">
-  <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow space-y-8 mt-6">
-    <h1 class="text-3xl font-bold text-gray-800">👨‍🏫 Welcome, <?= htmlspecialchars($teacher_name) ?></h1>
-    <h2 class="text-xl font-semibold text-gray-700">Your Assigned Classes, Subjects & Exams</h2>
+<body class="bg-gray-100 p-6">
 
-    <?php if ($assigned->num_rows === 0): ?>
-      <p class="text-gray-600 mt-4">You are not assigned to any classes or subjects.</p>
-    <?php else: ?>
-      <?php foreach ($subjectsByClass as $class_id => $subjects): ?>
-        <?php
-        $classInfo = $subjects[0];
-        $exams = $examsByClass[$class_id] ?? [];
-        ?>
-        <div class="border rounded-lg shadow p-4 bg-gray-50">
-          <h3 class="text-xl font-semibold text-blue-800 mb-2">
-            Grade <?= htmlspecialchars($classInfo['grade']) ?> - <?= htmlspecialchars($classInfo['section']) ?>
-            (<?= htmlspecialchars($classInfo['type']) ?>)
-          </h3>
-
-          <p class="font-semibold mb-2">Subjects assigned to you in this class:</p>
-          <ul class="mb-4 list-disc list-inside">
-            <?php foreach ($subjects as $sub): ?>
-              <li><?= htmlspecialchars($sub['subject_name']) ?></li>
-            <?php endforeach; ?>
-          </ul>
-
-          <?php if (empty($exams)): ?>
-            <p class="italic text-gray-500">No exams scheduled for this class yet.</p>
-          <?php else: ?>
-            <p class="font-semibold mb-2">Exams:</p>
-            <ul class="space-y-2">
-              <?php foreach ($exams as $exam): ?>
-                <li class="p-3 bg-white border rounded flex justify-between items-center">
-                  <div>
-                    <strong class="text-lg"><?= htmlspecialchars($exam['exam_name']) ?></strong><br />
-                    <span class="text-sm text-gray-600">
-                      Type: <?= htmlspecialchars($exam['exam_type']) ?> | Created:
-                      <?= date('M d, Y', strtotime($exam['created_at'])) ?>
-                    </span>
-                  </div>
-                  <div class="flex gap-2">
-                    <?php foreach ($subjects as $sub): ?>
-                      <button
-                        onclick="openMarksModal(<?= $exam['id'] ?>, <?= $class_id ?>, <?= $sub['subject_id'] ?>, '<?= htmlspecialchars(addslashes($sub['subject_name'])) ?>')"
-                        class="bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 text-sm whitespace-nowrap"
-                        title="Add/Edit marks for <?= htmlspecialchars($sub['subject_name']) ?>">
-                        Marks - <?= htmlspecialchars($sub['subject_name']) ?>
-                      </button>
-                    <?php endforeach; ?>
-                  </div>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          <?php endif; ?>
-        </div>
-      <?php endforeach; ?>
-    <?php endif; ?>
+  <!-- Filter -->
+  <div class="mb-4 max-w-6xl mx-auto">
+    <label class="font-medium text-gray-700">Filter by Class:</label>
+    <select name="filter_class" id="filterClass" class="border rounded px-3 py-1">
+      <option value="all" <?= $class_filter === 'all' ? 'selected' : '' ?>>All Classes</option>
+      <?php $class_result->data_seek(0);
+      while ($row = $class_result->fetch_assoc()): ?>
+        <option value="<?= $row['id'] ?>" <?= $class_filter == $row['id'] ? 'selected' : '' ?>>
+          Grade <?= $row['grade'] ?> - <?= $row['section'] ?>
+        </option>
+      <?php endwhile; ?>
+    </select>
   </div>
 
-  <!-- Marks Modal -->
-  <div id="marksModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center" onclick="closeMarksModal(event)">
-    <div onclick="event.stopPropagation()" class="bg-white w-full max-w-3xl p-6 rounded-lg shadow-lg overflow-y-auto max-h-[90vh]">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-2xl font-bold text-blue-800">Enter Marks for <span id="modalSubjectName"></span></h2>
-        <button onclick="closeMarksModal()" class="text-gray-500 text-2xl">&times;</button>
-      </div>
+  <!-- Exams Table -->
+  <div class="bg-white p-6 rounded-lg shadow max-w-6xl mx-auto mb-8">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-bold">📋 Exams List</h1>
+      <button onclick="openExamModal()" class="bg-blue-600 text-white px-4 py-2 rounded">➕ Add Exam</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full table-auto border-collapse border">
+        <thead>
+          <tr class="bg-gray-200 text-left">
+            <th class="p-3 border">#</th>
+            <th class="p-3 border">Exam Name</th>
+            <th class="p-3 border">Class</th>
+            <th class="p-3 border">Type</th>
+            <th class="p-3 border">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="examTableBody">
+          <?php if ($exams->num_rows > 0): $i=1; while ($row=$exams->fetch_assoc()): ?>
+            <tr class="hover:bg-gray-100">
+              <td class="p-3 border"><?= $i++ ?></td>
+              <td class="p-3 border"><?= htmlspecialchars($row['exam_name']) ?></td>
+              <td class="p-3 border">Grade <?= $row['grade'] ?> - <?= $row['section'] ?></td>
+              <td class="p-3 border"><?= htmlspecialchars($row['exam_type']) ?></td>
+              <td class="p-3 border">
+                <button onclick='openEditModal(<?= json_encode($row) ?>)' class="px-3 py-1 bg-yellow-400 text-white rounded">✏️</button>
+                <button onclick='openDeleteModal(<?= $row["id"] ?>, "<?= addslashes($row["exam_name"]) ?>")' class="px-3 py-1 bg-red-500 text-white rounded">🗑️</button>
+              </td>
+            </tr>
+          <?php endwhile; else: ?>
+            <tr><td colspan="5" class="text-center p-4 text-gray-500">No exams found.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-      <!-- Full/Pass Marks Display -->
-      <div id="marksInfo" class="mb-4 p-3 bg-blue-50 border rounded text-blue-800 font-semibold"></div>
-
-      <form id="marksForm" method="POST" action="submit_marks.php">
-        <input type="hidden" name="exam_id" id="modalExamId" />
-        <input type="hidden" name="class_id" id="modalClassId" />
-        <input type="hidden" name="subject_id" id="modalSubjectId" />
-
-        <div id="marksStudentList" class="space-y-4 max-h-96 overflow-y-auto border p-2 rounded bg-gray-50"></div>
-
-        <div class="mt-6 text-right">
-          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">✅ Submit Marks</button>
+  <!-- Add Exam Modal -->
+  <div id="examModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center"
+    onclick="closeModal(event)">
+    <div onclick="event.stopPropagation();"
+      class="bg-white max-w-3xl w-full p-6 rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
+      <h2 class="text-xl font-bold mb-4">➕ Create Terminal Exam</h2>
+      <form method="POST">
+        <input type="hidden" name="action" value="add" />
+        <div class="mb-4">
+          <label class="block font-medium">Exam Name</label>
+          <input type="text" name="exam_name" required class="w-full border px-3 py-2 rounded" />
+        </div>
+        <div class="mb-4">
+          <label class="block font-medium">Select Class</label>
+          <select name="class_id" id="class_id" class="w-full border px-3 py-2 rounded" onchange="loadSubjects()">
+            <option value="">-- Select --</option>
+            <option value="all">All Classes</option>
+            <?php $class_result->data_seek(0);
+            while ($row = $class_result->fetch_assoc()): ?>
+              <option value="<?= $row['id'] ?>">Grade <?= $row['grade'] ?> - <?= $row['section'] ?></option>
+            <?php endwhile; ?>
+          </select>
+        </div>
+        <div id="subjectContainer" class="space-y-3 hidden"></div>
+        <div class="text-right mt-4">
+          <button type="submit" class="px-5 py-2 bg-blue-600 text-white rounded">Create</button>
         </div>
       </form>
     </div>
   </div>
 
+
+  <!-- Edit Exam Modal -->
+  <div id="editExamModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center"
+    onclick="closeEditModal(event)">
+    <div onclick="event.stopPropagation();"
+      class="bg-white max-w-3xl w-full p-6 rounded-xl shadow-xl overflow-y-auto max-h-[90vh]">
+      <h2 class="text-xl font-bold mb-4">✏️ Edit Exam</h2>
+      <form method="POST" id="editExamForm">
+        <input type="hidden" name="action" value="edit" />
+        <input type="hidden" name="exam_id" id="edit_exam_id" />
+        <div class="mb-4">
+          <label class="block font-medium">Exam Name</label>
+          <input type="text" name="exam_name" id="edit_exam_name" required class="w-full border px-3 py-2 rounded" />
+        </div>
+        <div class="mb-4">
+          <label class="block font-medium">Select Class</label>
+          <select name="class_id" id="edit_class_id" class="w-full border px-3 py-2 rounded"
+            onchange="loadEditSubjects()">
+            <option value="">-- Select --</option>
+            <option value="all">All Classes</option>
+            <?php
+            // Reset pointer before fetching classes again
+            $class_result->data_seek(0);
+            while ($row = $class_result->fetch_assoc()):
+              ?>
+              <option value="<?= $row['id'] ?>">Grade <?= $row['grade'] ?> - <?= $row['section'] ?></option>
+            <?php endwhile; ?>
+          </select>
+        </div>
+        <div id="editSubjectContainer" class="space-y-3"></div>
+        <div class="text-right mt-4">
+          <button type="submit" class="px-5 py-2 bg-yellow-500 text-white rounded">Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="deleteExamModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center"
+    onclick="closeDeleteModal(event)">
+    <div onclick="event.stopPropagation();" class="bg-white max-w-md w-full p-6 rounded-xl shadow-xl">
+      <h2 class="text-xl font-bold mb-4 text-red-600">🗑️ Confirm Delete</h2>
+      <p>Are you sure you want to delete the exam: <strong id="deleteExamName"></strong>?</p>
+      <form method="POST" class="mt-6" id="deleteExamForm">
+        <input type="hidden" name="action" value="delete" />
+        <input type="hidden" name="exam_id" id="delete_exam_id" />
+        <div class="flex justify-end gap-4">
+          <button type="button" onclick="closeDeleteModal()"
+            class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
   <script>
-    function openMarksModal(examId, classId, subjectId, subjectName) {
-      document.getElementById('modalExamId').value = examId;
-      document.getElementById('modalClassId').value = classId;
-      document.getElementById('modalSubjectId').value = subjectId;
-      document.getElementById('modalSubjectName').textContent = subjectName;
 
-      const listContainer = document.getElementById('marksStudentList');
-      const marksInfo = document.getElementById('marksInfo');
-      listContainer.innerHTML = 'Loading students...';
-      marksInfo.textContent = '';
+     // === Modal Open/Close Functions ===
+  function openExamModal() {
+    document.getElementById('examModal').classList.remove('hidden');
+  }
 
-      fetch(`get_students_for_marks.php?class_id=${classId}&exam_id=${examId}&subject_id=${subjectId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (!data.success) {
-            alert('❌ Error: ' + data.error);
-            listContainer.innerHTML = '<p class="text-red-500">Failed to load students.</p>';
-            return;
-          }
+  function closeModal(event) {
+    if (!event || event.target.id === 'examModal') {
+      document.getElementById('examModal').classList.add('hidden');
+    }
+  }
 
-          // Display full and pass marks
-          marksInfo.textContent = `Full Marks: ${data.full_marks} | Pass Marks: ${data.pass_marks}`;
+  function openEditModal(exam) {
+    // Show modal
+    document.getElementById('editExamModal').classList.remove('hidden');
 
-          if (data.students.length === 0) {
-            listContainer.innerHTML = '<p class="text-red-500">No students found for this class.</p>';
-            return;
-          }
+    // Populate exam fields
+    document.getElementById('edit_exam_id').value = exam.id;
+    document.getElementById('edit_exam_name').value = exam.exam_name;
+    document.getElementById('edit_class_id').value = exam.class_id;
 
-          listContainer.innerHTML = '';
-          data.students.forEach(student => {
-            const div = document.createElement('div');
-            div.className = 'flex items-center gap-4';
-            div.innerHTML = `
-              <input type="hidden" name="student_id[]" value="${student.id}" />
-              <label class="w-1/2 font-medium text-gray-700">${student.full_name}</label>
-              <input type="number" name="marks[]" value="${student.marks ?? ''}" 
-                     min="0" max="${data.full_marks}" placeholder="Enter marks" 
-                     required class="w-1/2 px-3 py-2 border rounded" />
-            `;
-            listContainer.appendChild(div);
-          });
-        })
-        .catch(err => {
-          alert('❌ Error loading students: ' + err.message);
-          listContainer.innerHTML = '<p class="text-red-500">Failed to load students.</p>';
+    // Load subjects dynamically for editing
+    loadEditSubjects(exam.id, exam.class_id);
+  }
+
+  function closeEditModal(event) {
+    if (!event || event.target.id === 'editExamModal') {
+      document.getElementById('editExamModal').classList.add('hidden');
+    }
+  }
+
+  function openDeleteModal(id, name) {
+    document.getElementById('deleteExamModal').classList.remove('hidden');
+    document.getElementById('delete_exam_id').value = id;
+    document.getElementById('deleteExamName').innerText = name;
+  }
+
+  function closeDeleteModal(event) {
+    if (!event || event.target.id === 'deleteExamModal') {
+      document.getElementById('deleteExamModal').classList.add('hidden');
+    }
+  }
+
+  // === Load Subjects into Edit Modal ===
+  function loadEditSubjects(exam_id, class_id) {
+    const container = document.getElementById('editSubjectContainer');
+    container.innerHTML = '';
+
+    // Fetch current subjects with marks for this exam
+    fetch('fetch_exam_subjects.php?exam_id=' + exam_id)
+      .then(res => res.json())
+      .then(data => {
+        // Get the subject list for this class (like in loadSubjects)
+        let filtered = (class_id === "all")
+          ? [...new Map(subjects.map(s => [s.name, s])).values()]
+          : subjects.filter(s => s.class_id == class_id);
+
+        filtered.forEach(s => {
+          const found = data.find(d => d.subject_id == s.id) || { full_marks: '', pass_marks: '' };
+          container.innerHTML += `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <input type="hidden" name="subject_id[]" value="${s.id}">
+              <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
+              <input type="number" name="full_marks[]" value="${found.full_marks}" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
+              <input type="number" name="pass_marks[]" value="${found.pass_marks}" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
+            </div>`;
         });
+      });
+  }
 
-      document.getElementById('marksModal').classList.remove('hidden');
+  
+    // Handle Subjects Load (Fixed template literals)
+    const subjects = <?php
+      $subs = $conn->query("SELECT id,name,class_id FROM subjects ORDER BY name");
+      $subs_array = [];
+      while ($r = $subs->fetch_assoc()) { $subs_array[] = $r; }
+      echo json_encode($subs_array);
+    ?>;
+
+    function loadSubjects() {
+      const classId = document.getElementById("class_id").value;
+      const container = document.getElementById("subjectContainer");
+      container.innerHTML = "";
+      if (!classId) { container.classList.add("hidden"); return; }
+
+      let filtered = (classId === "all")
+        ? [...new Map(subjects.map(s => [s.name, s])).values()]
+        : subjects.filter(s => s.class_id == classId);
+
+      filtered.forEach(s => {
+        container.innerHTML += `
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input type="hidden" name="subject_id[]" value="${s.id}">
+            <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
+            <input type="number" name="full_marks[]" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
+            <input type="number" name="pass_marks[]" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
+          </div>`;
+      });
+      container.classList.remove("hidden");
     }
 
-    function closeMarksModal(e) {
-      if (!e || e.target.id === 'marksModal') {
-        document.getElementById('marksModal').classList.add('hidden');
-      }
-    }
+    // Filter table
+    document.getElementById('filterClass').addEventListener('change', e => {
+      fetch('fetch_exams.php?filter_class=' + e.target.value)
+        .then(res => res.text())
+        .then(html => document.getElementById('examTableBody').innerHTML = html);
+    });
   </script>
 </body>
 </html>
