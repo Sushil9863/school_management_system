@@ -36,11 +36,22 @@ try {
         throw new Exception('You are not assigned to this subject or class');
     }
 
-    // Get students in this class (assuming students.grade = class.grade)
-    // You may need to adapt if you have section or other filtering
-    $stmtStudents = $conn->prepare("SELECT s.id, s.full_name, 
-      (SELECT marks FROM marks WHERE exam_id = ? AND subject_id = ? AND student_id = s.id) AS marks 
-      FROM students s WHERE s.grade = ? ORDER BY s.full_name ASC");
+    // Get full_marks for this exam + subject
+    $stmtFull = $conn->prepare("SELECT full_marks FROM exam_subjects WHERE exam_id = ? AND subject_id = ?");
+    $stmtFull->bind_param("ii", $exam_id, $subject_id);
+    $stmtFull->execute();
+    $resultFull = $stmtFull->get_result();
+    $fullRow = $resultFull->fetch_assoc();
+    $full_marks = $fullRow ? (int)$fullRow['full_marks'] : 100; // default to 100 if not found
+
+    // Get students in this class (matching by grade)
+    $stmtStudents = $conn->prepare("
+        SELECT s.id, s.full_name, 
+          (SELECT marks FROM marks WHERE exam_id = ? AND subject_id = ? AND student_id = s.id) AS marks 
+        FROM students s 
+        WHERE s.grade = ? 
+        ORDER BY s.full_name ASC
+    ");
     $stmtStudents->bind_param("iii", $exam_id, $subject_id, $class_id);
     $stmtStudents->execute();
     $resultStudents = $stmtStudents->get_result();
@@ -54,7 +65,11 @@ try {
         ];
     }
 
-    echo json_encode(['success' => true, 'students' => $students]);
+    echo json_encode([
+        'success' => true,
+        'full_marks' => $full_marks,
+        'students' => $students
+    ]);
 
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);

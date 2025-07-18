@@ -135,87 +135,99 @@ foreach ($assigned as $row) {
   </div>
 
   <!-- Marks Modal -->
-  <div id="marksModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center"
-    onclick="closeMarksModal(event)">
-    <div onclick="event.stopPropagation()"
-      class="bg-white w-full max-w-3xl p-6 rounded-lg shadow-lg overflow-y-auto max-h-[90vh]">
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-2xl font-bold text-blue-800">Enter Marks for <span id="modalSubjectName"></span></h2>
-        <button onclick="closeMarksModal()" class="text-gray-500 text-2xl">&times;</button>
-      </div>
-
-      <form id="marksForm" method="POST" action="submit_marks.php">
-        <input type="hidden" name="exam_id" id="modalExamId" />
-        <input type="hidden" name="class_id" id="modalClassId" />
-        <input type="hidden" name="subject_id" id="modalSubjectId" />
-
-        <div id="marksStudentList" class="space-y-4 max-h-96 overflow-y-auto border p-2 rounded bg-gray-50"></div>
-
-        <div class="mt-6 text-right">
-          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">✅ Submit
-            Marks</button>
-        </div>
-      </form>
+<div id="marksModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center"
+  onclick="closeMarksModal(event)">
+  <div onclick="event.stopPropagation()"
+    class="bg-white w-full max-w-3xl p-6 rounded-lg shadow-lg overflow-y-auto max-h-[90vh]">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-bold text-blue-800">
+        Enter Marks for <span id="modalSubjectName"></span>
+      </h2>
+      <button onclick="closeMarksModal()" class="text-gray-500 text-2xl">&times;</button>
     </div>
+
+    <!-- Full marks placeholder -->
+    <p id="fullMarksDisplay" class="text-lg font-semibold text-gray-700 mb-4"></p>
+
+    <form id="marksForm" method="POST" action="submit_marks.php">
+      <input type="hidden" name="exam_id" id="modalExamId" />
+      <input type="hidden" name="class_id" id="modalClassId" />
+      <input type="hidden" name="subject_id" id="modalSubjectId" />
+
+      <div id="marksStudentList" class="space-y-4 max-h-96 overflow-y-auto border p-2 rounded bg-gray-50"></div>
+
+      <div class="mt-6 text-right">
+        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">✅ Submit Marks</button>
+      </div>
+    </form>
   </div>
+</div>
 
-  <script>
-    function openMarksModal(examId, classId, subjectId, subjectName) {
-      console.log("Loading marks for examId:", examId, "classId:", classId, "subjectId:", subjectId);
+<script>
+  function openMarksModal(examId, classId, subjectId, subjectName) {
+    console.log("Loading marks for examId:", examId, "classId:", classId, "subjectId:", subjectId);
 
-      // Set hidden inputs & modal title
-      document.getElementById('modalExamId').value = examId;
-      document.getElementById('modalClassId').value = classId;
-      document.getElementById('modalSubjectId').value = subjectId;
-      document.getElementById('modalSubjectName').textContent = subjectName;
+    document.getElementById('modalExamId').value = examId;
+    document.getElementById('modalClassId').value = classId;
+    document.getElementById('modalSubjectId').value = subjectId;
+    document.getElementById('modalSubjectName').textContent = subjectName;
 
-      // Clear previous student list
-      const listContainer = document.getElementById('marksStudentList');
-      listContainer.innerHTML = 'Loading students...';
+    const listContainer = document.getElementById('marksStudentList');
+    const fullMarksDisplay = document.getElementById('fullMarksDisplay');
 
-      fetch(`get_students_for_marks.php?class_id=${classId}&exam_id=${examId}&subject_id=${subjectId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (!data.success) {
-            alert('❌ Error: ' + data.error);
-            listContainer.innerHTML = '<p class="text-red-500">Failed to load students.</p>';
-            return;
-          }
+    listContainer.innerHTML = 'Loading students...';
+    fullMarksDisplay.textContent = '';
 
-          if (data.students.length === 0) {
-            listContainer.innerHTML = '<p class="text-red-500">No students found for this class.</p>';
-            return;
-          }
-
-          // Show students and marks input
-          listContainer.innerHTML = '';
-          data.students.forEach(student => {
-            const div = document.createElement('div');
-            div.className = 'flex items-center gap-4';
-
-            div.innerHTML = `
-          <input type="hidden" name="student_id[]" value="${student.id}" />
-          <label class="w-1/2 font-medium text-gray-700">${student.full_name}</label>
-          <input type="number" name="marks[]" value="${student.marks ?? ''}" min="0" max="100" placeholder="Enter marks" required class="w-1/2 px-3 py-2 border rounded" />
-        `;
-            listContainer.appendChild(div);
-          });
-        })
-        .catch(err => {
-          alert('❌ Error loading students: ' + err.message);
+    // Fetch students + full marks
+    fetch(`get_students_for_marks.php?class_id=${classId}&exam_id=${examId}&subject_id=${subjectId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) {
+          alert('❌ Error: ' + data.error);
           listContainer.innerHTML = '<p class="text-red-500">Failed to load students.</p>';
+          return;
+        }
+
+        // Show full marks at the top
+        if (data.full_marks) {
+          fullMarksDisplay.textContent = `Full Marks: ${data.full_marks}`;
+        }
+
+        if (data.students.length === 0) {
+          listContainer.innerHTML = '<p class="text-red-500">No students found for this class.</p>';
+          return;
+        }
+
+        listContainer.innerHTML = '';
+        data.students.forEach(student => {
+          const div = document.createElement('div');
+          div.className = 'flex items-center gap-4';
+          div.innerHTML = `
+            <input type="hidden" name="student_id[]" value="${student.id}" />
+            <label class="w-1/2 font-medium text-gray-700">${student.full_name}</label>
+            <input type="number" name="marks[]" value="${student.marks ?? ''}" 
+              min="0" max="${data.full_marks ?? 100}" 
+              placeholder="Enter marks" required 
+              class="w-1/2 px-3 py-2 border rounded" />
+          `;
+          listContainer.appendChild(div);
         });
+      })
+      .catch(err => {
+        alert('❌ Error loading students: ' + err.message);
+        listContainer.innerHTML = '<p class="text-red-500">Failed to load students.</p>';
+      });
 
-      // Show modal
-      document.getElementById('marksModal').classList.remove('hidden');
-    }
+    document.getElementById('marksModal').classList.remove('hidden');
+  }
 
-    function closeMarksModal(e) {
-      if (!e || e.target.id === 'marksModal') {
-        document.getElementById('marksModal').classList.add('hidden');
-      }
+  function closeMarksModal(e) {
+    if (!e || e.target.id === 'marksModal') {
+      document.getElementById('marksModal').classList.add('hidden');
     }
-  </script>
+  }
+</script>
+
 
 </body>
 
