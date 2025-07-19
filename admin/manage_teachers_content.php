@@ -1,7 +1,13 @@
 <?php
 require '../partials/dbconnect.php';
+require 'check_admin.php'; // admin session check & school_id set भैसकेको मानिन्छ
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
+
+$school_id = $_SESSION['school_id'] ?? null;
+if (!$school_id) {
+    die("Invalid access: School not identified.");
+}
 
 
 function custom_hash($password) {
@@ -23,11 +29,10 @@ function custom_hash($password) {
     return strtoupper($result);
 }
 
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-     if ($action === 'add') {
+    if ($action === 'add') {
         $full_name = $_POST['full_name'];
         $address = $_POST['address'];
         $phone = $_POST['phone'];
@@ -35,19 +40,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = $_POST['username'];
         $password = custom_hash($_POST['password']);
 
-        $stmt1 = $conn->prepare("INSERT INTO teachers (full_name, address, phone, email, username, password) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt1->bind_param("ssssss", $full_name, $address, $phone, $email, $username, $password);
+        // Insert into teachers with school_id
+        $stmt1 = $conn->prepare("INSERT INTO teachers (full_name, address, phone, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt1->bind_param("ssssssi", $full_name, $address, $phone, $email, $username, $password, $school_id);
         $stmt1->execute();
 
-        $stmt2 = $conn->prepare("INSERT INTO users (username, type, password, email) VALUES (?, 'teacher', ?, ?)");
-        $stmt2->bind_param("sss", $username, $password, $email);
+        // Insert into users table
+        $stmt2 = $conn->prepare("INSERT INTO users (school_id, username, type, password, email) VALUES (?, ?, 'teacher', ?, ?)");
+        $stmt2->bind_param("isss",$school_id, $username, $password, $email);
         $stmt2->execute();
     }
 
     if ($action === 'edit') {
         $teacher_id = $_POST['teacher_id'];
-        $stmt = $conn->prepare("UPDATE teachers SET full_name=?, address=?, phone=?, email=? WHERE id=?");
-        $stmt->bind_param("ssssi", $_POST['full_name'], $_POST['address'], $_POST['phone'], $_POST['email'], $teacher_id);
+
+        // Verify teacher belongs to this school
+        $check_stmt = $conn->prepare("SELECT id FROM teachers WHERE id = ? AND school_id = ?");
+        $check_stmt->bind_param("ii", $teacher_id, $school_id);
+        $check_stmt->execute();
+        $check_stmt->store_result();
+        if ($check_stmt->num_rows === 0) {
+            die("Unauthorized operation.");
+        }
+
+        $stmt = $conn->prepare("UPDATE teachers SET full_name=?, address=?, phone=?, email=? WHERE id=? AND school_id=?");
+        $stmt->bind_param("sssiii", $_POST['full_name'], $_POST['address'], $_POST['phone'], $_POST['email'], $teacher_id, $school_id);
         $stmt->execute();
 
         $stmt2 = $conn->prepare("UPDATE users SET email=? WHERE username=(SELECT username FROM teachers WHERE id=?)");
@@ -57,15 +74,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete') {
         $teacher_id = $_POST['teacher_id'];
-        $res = $conn->query("SELECT username FROM teachers WHERE id = $teacher_id");
-        $username = $res->fetch_assoc()['username'];
 
-        $conn->query("DELETE FROM users WHERE username = '$username' AND type = 'teacher'");
-        $conn->query("DELETE FROM teachers WHERE id = $teacher_id");
+        // Verify teacher belongs to this school before deleting
+        $check_stmt = $conn->prepare("SELECT username FROM teachers WHERE id = ? AND school_id = ?");
+        $check_stmt->bind_param("ii", $teacher_id, $school_id);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        if ($result->num_rows === 0) {
+            die("Unauthorized operation.");
+        }
+        $username = $result->fetch_assoc()['username'];
+
+        $del_user_stmt = $conn->prepare("DELETE FROM users WHERE username = ? AND type = 'teacher'");
+        $del_user_stmt->bind_param("s", $username);
+        $del_user_stmt->execute();
+
+        $del_teacher_stmt = $conn->prepare("DELETE FROM teachers WHERE id = ? AND school_id = ?");
+        $del_teacher_stmt->bind_param("ii", $teacher_id, $school_id);
+        $del_teacher_stmt->execute();
     }
+
+    header("Location: manage_teachers.php");
+    exit;
 }
 
-$teachers = $conn->query("SELECT * FROM teachers ORDER BY id DESC");
+// Fetch teachers only for this school
+$stmt = $conn->prepare("SELECT * FROM teachers WHERE school_id = ? ORDER BY id DESC");
+$stmt->bind_param("i", $school_id);
+$stmt->execute();
+$teachers = $stmt->get_result();
 
 if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     ob_start();
@@ -73,11 +110,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     echo "<thead><tr><th>Full Name</th><th>Address</th><th>Phone</th><th>Email</th><th>Username</th></tr></thead><tbody>";
     foreach ($teachers as $row) {
         echo "<tr>
-                <td>{$row['full_name']}</td>
-                <td>{$row['address']}</td>
-                <td>{$row['phone']}</td>
-                <td>{$row['email']}</td>
-                <td>{$row['username']}</td>
+                <td>".htmlspecialchars($row['full_name'])."</td>
+                <td>".htmlspecialchars($row['address'])."</td>
+                <td>".htmlspecialchars($row['phone'])."</td>
+                <td>".htmlspecialchars($row['email'])."</td>
+                <td>".htmlspecialchars($row['username'])."</td>
               </tr>";
     }
     echo "</tbody></table>";
@@ -146,6 +183,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       </tbody>
     </table>
   </div>
+
   <!-- Add/Edit Modal -->
   <div id="teacherModal" onclick="closeModal(event)" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
     <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-xl transition duration-300 ease-in-out
@@ -214,63 +252,63 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     </div>
   </div>
 
-  <script>
-    function filterTeachers() {
-      const filter = document.getElementById("searchInput").value.toLowerCase();
-      const rows = document.querySelectorAll("table tbody tr");
-      rows.forEach(row => {
-        const name = row.querySelector("td").textContent.toLowerCase();
-        row.style.display = name.includes(filter) ? "" : "none";
-      });
-    }
+<script>
+  function filterTeachers() {
+    const filter = document.getElementById("searchInput").value.toLowerCase();
+    const rows = document.querySelectorAll("table tbody tr");
+    rows.forEach(row => {
+      const name = row.querySelector("td").textContent.toLowerCase();
+      row.style.display = name.includes(filter) ? "" : "none";
+    });
+  }
 
-    function closeModal(e) {
-      if (e.target.id === "teacherModal" || e.target.id === "deleteModal") {
-        e.target.classList.add("hidden");
-      }
+  function closeModal(e) {
+    if (e.target.id === "teacherModal" || e.target.id === "deleteModal") {
+      e.target.classList.add("hidden");
     }
+  }
 
-    function closeAllModals() {
-      document.getElementById("teacherModal").classList.add("hidden");
-      document.getElementById("deleteModal").classList.add("hidden");
-    }
+  function closeAllModals() {
+    document.getElementById("teacherModal").classList.add("hidden");
+    document.getElementById("deleteModal").classList.add("hidden");
+  }
 
-    function openAddModal() {
-      document.getElementById("modalTitle").innerText = "➕ Add Teacher";
-      document.getElementById("formAction").value = "add";
-      document.getElementById("teacher_id").value = "";
-      document.getElementById("full_name").value = "";
-      document.getElementById("address").value = "";
-      document.getElementById("phone").value = "";
-      document.getElementById("email").value = "";
-      document.getElementById("username").value = "";
-      document.getElementById("password").value = "";
-      document.getElementById("authFields").classList.remove("hidden");
-      const modalBox = document.getElementById("modalBox");
-      modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
-      modalBox.classList.add("hover:ring-blue-400", "hover:shadow-[0_0_30px_rgba(59,130,246,0.6)]");
-      document.getElementById("teacherModal").classList.remove("hidden");
-    }
+  function openAddModal() {
+    document.getElementById("modalTitle").innerText = "➕ Add Teacher";
+    document.getElementById("formAction").value = "add";
+    document.getElementById("teacher_id").value = "";
+    document.getElementById("full_name").value = "";
+    document.getElementById("address").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("email").value = "";
+    document.getElementById("username").value = "";
+    document.getElementById("password").value = "";
+    document.getElementById("authFields").classList.remove("hidden");
+    const modalBox = document.getElementById("modalBox");
+    modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
+    modalBox.classList.add("hover:ring-blue-400", "hover:shadow-[0_0_30px_rgba(59,130,246,0.6)]");
+    document.getElementById("teacherModal").classList.remove("hidden");
+  }
 
-    function openEditModal(data) {
-      document.getElementById("modalTitle").innerText = "✏️ Edit Teacher";
-      document.getElementById("formAction").value = "edit";
-      document.getElementById("teacher_id").value = data.id;
-      document.getElementById("full_name").value = data.full_name;
-      document.getElementById("address").value = data.address;
-      document.getElementById("phone").value = data.phone;
-      document.getElementById("email").value = data.email;
-      document.getElementById("authFields").classList.add("hidden");
-      const modalBox = document.getElementById("modalBox");
-      modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
-      modalBox.classList.add("hover:ring-green-400", "hover:shadow-[0_0_30px_rgba(34,197,94,0.6)]");
-      document.getElementById("teacherModal").classList.remove("hidden");
-    }
+  function openEditModal(data) {
+    document.getElementById("modalTitle").innerText = "✏️ Edit Teacher";
+    document.getElementById("formAction").value = "edit";
+    document.getElementById("teacher_id").value = data.id;
+    document.getElementById("full_name").value = data.full_name;
+    document.getElementById("address").value = data.address;
+    document.getElementById("phone").value = data.phone;
+    document.getElementById("email").value = data.email;
+    document.getElementById("authFields").classList.add("hidden");
+    const modalBox = document.getElementById("modalBox");
+    modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
+    modalBox.classList.add("hover:ring-green-400", "hover:shadow-[0_0_30px_rgba(34,197,94,0.6)]");
+    document.getElementById("teacherModal").classList.remove("hidden");
+  }
 
-    function openDeleteModal(id) {
-      document.getElementById("delete_id").value = id;
-      document.getElementById("deleteModal").classList.remove("hidden");
-    }
-  </script>
+  function openDeleteModal(id) {
+    document.getElementById("delete_id").value = id;
+    document.getElementById("deleteModal").classList.remove("hidden");
+  }
+</script>
 </body>
 </html>

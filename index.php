@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,8 +15,10 @@
       height: 100vh;
       margin: 0;
     }
+
     .login-container {
-      background: rgba(255, 255, 255, 0.15); /* more transparent */
+      background: rgba(255, 255, 255, 0.15);
+      /* more transparent */
       border-radius: 16px;
       padding: 30px 25px 25px;
       width: 320px;
@@ -26,6 +29,7 @@
       color: #333;
       box-sizing: border-box;
     }
+
     .logo-circle {
       width: 120px;
       height: 120px;
@@ -33,39 +37,46 @@
       border-radius: 50%;
       overflow: hidden;
       border: 3px solid rgba(255, 255, 255, 0.6);
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
       background: rgba(255, 255, 255, 0.1);
       display: flex;
       align-items: center;
       justify-content: center;
     }
+
     .logo-circle img {
       width: 100%;
       height: 100%;
       border-radius: 50%;
-      object-fit: cover; /* fills circle without distortion */
+      object-fit: cover;
+      /* fills circle without distortion */
       display: block;
-      filter: drop-shadow(0 0 4px rgba(0,0,0,0.1));
+      filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.1));
       transition: filter 0.3s ease;
     }
+
     .logo-circle img:hover {
-      filter: drop-shadow(0 0 8px rgba(0,0,0,0.3));
+      filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.3));
     }
+
     h2 {
       text-align: center;
       color: #222;
       margin-bottom: 20px;
       font-weight: 700;
     }
+
     .form-group {
       margin-bottom: 15px;
     }
+
     label {
       display: block;
       margin-bottom: 5px;
       color: #444;
       font-weight: 600;
     }
+
     input[type="text"],
     input[type="password"] {
       width: 100%;
@@ -79,12 +90,15 @@
       box-sizing: border-box;
       backdrop-filter: blur(5px);
     }
+
     input[type="text"]:focus,
     input[type="password"]:focus {
-      border-color: #f59e0b; /* amber-500 */
+      border-color: #f59e0b;
+      /* amber-500 */
       background: rgba(255, 255, 255, 0.5);
       outline: none;
     }
+
     button {
       width: 100%;
       padding: 10px;
@@ -97,54 +111,61 @@
       transition: background 0.3s ease, transform 0.2s ease;
       box-shadow: 0 4px 8px rgba(246, 150, 25, 0.6);
     }
+
     button:hover {
       background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
       transform: scale(1.05);
     }
+
     a {
       display: block;
       text-align: center;
       margin-top: 12px;
-      color: #b45309; /* amber-700 */
+      color: #b45309;
+      /* amber-700 */
       text-decoration: none;
       font-weight: 600;
       font-size: 14px;
       transition: color 0.3s ease;
     }
+
     a:hover {
-      color: #78350f; /* amber-900 */
+      color: #78350f;
+      /* amber-900 */
       text-decoration: underline;
     }
   </style>
 </head>
+
 <body>
 
-<?php
-session_start();
-include 'partials/dbconnect.php';
+  <?php
+  session_start();
+  include 'partials/dbconnect.php';
 
-// Your PHP login logic unchanged
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+  // Your PHP login logic unchanged
+  if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
-    function custom_hash($password) {
-        $salt = 'XyZ@2025!abc123';
-        $rounds = 3;
-        $result = $password;
-        for ($r = 0; $r < $rounds; $r++) {
-            $temp = '';
-            for ($i = 0; $i < strlen($result); $i++) {
-                $char = ord($result[$i]);
-                $saltChar = ord($salt[$i % strlen($salt)]);
-                $mix = ($char ^ $saltChar) + ($char << 1);
-                $hex = dechex($mix);
-                $temp .= $hex;
-            }
-            $base64 = base64_encode($temp);
-            $result = substr($temp, 0, 16) . substr($base64, -16);
+    function custom_hash($password)
+    {
+      $salt = 'XyZ@2025!abc123';
+      $rounds = 3;
+      $result = $password;
+      for ($r = 0; $r < $rounds; $r++) {
+        $temp = '';
+        for ($i = 0; $i < strlen($result); $i++) {
+          $char = ord($result[$i]);
+          $saltChar = ord($salt[$i % strlen($salt)]);
+          $mix = ($char ^ $saltChar) + ($char << 1);
+          $hex = dechex($mix);
+          $temp .= $hex;
         }
-        return strtoupper($result);
+        $base64 = base64_encode($temp);
+        $result = substr($temp, 0, 16) . substr($base64, -16);
+      }
+      return strtoupper($result);
     }
 
     $hashed_password = custom_hash($password);
@@ -155,58 +176,60 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        $_SESSION['user_id'] = $row['id'];
-        $_SESSION['username'] = $row['username'];
-        $_SESSION['user_type'] = $row['type'];
-
-        switch ($row['type']) {
-            case 'superadmin':
-                header("Location: superadmin/superadmin_dashboard.php");
-                break;
-            case 'admin':
-                header("Location: admin/admin_dashboard.php");
-                break;
-            case 'teacher':
-                header("Location: teacher/teacher_dashboard.php");
-                break;
-            case 'parents':
-                header("Location: parents/parents_dashboard.php");
-                break;
-            case 'accountant':
-                header("Location: accountant/accountant_dashboard.php");
-                break;
-            default:
-                echo "Invalid user type.";
-        }
-        exit();
+      $row = $result->fetch_assoc();
+      $_SESSION['user_id'] = $row['id'];
+      $_SESSION['username'] = $row['username'];
+      $_SESSION['user_type'] = $row['type'];
+      $_SESSION['school_id'] = $row['school_id']; 
+  
+      switch ($row['type']) {
+        case 'superadmin':
+          header("Location: superadmin/superadmin_dashboard.php");
+          break;
+        case 'admin':
+          header("Location: admin/admin_dashboard.php");
+          break;
+        case 'teacher':
+          header("Location: teacher/teacher_dashboard.php");
+          break;
+        case 'parents':
+          header("Location: parents/parents_dashboard.php");
+          break;
+        case 'accountant':
+          header("Location: accountant/accountant_dashboard.php");
+          break;
+        default:
+          echo "Invalid user type.";
+      }
+      exit();
     } else {
-        echo "<script>alert('Invalid username or password');</script>";
+      echo "<script>alert('Invalid username or password');</script>";
     }
 
     $stmt->close();
-}
-?>
+  }
+  ?>
 
-<div class="login-container">
+  <div class="login-container">
     <h2>Login to Shikshalaya</h2>
-  <div class="logo-circle">
-    <img src="images/logo.png" alt="Shikshalaya Logo" />
+    <div class="logo-circle">
+      <img src="images/logo.png" alt="Shikshalaya Logo" />
+    </div>
+    <form action="" method="post">
+      <div class="form-group">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required />
+      </div>
+      <button type="submit">Login</button>
+      <div class="form-group">
+        <a href="forgot_password.php">Forgot Password?</a>
+      </div>
+    </form>
   </div>
-  <form action="" method="post">
-    <div class="form-group">
-      <label for="username">Username:</label>
-      <input type="text" id="username" name="username" required />
-    </div>
-    <div class="form-group">
-      <label for="password">Password:</label>
-      <input type="password" id="password" name="password" required />
-    </div>
-    <button type="submit">Login</button>
-    <div class="form-group">
-      <a href="forgot_password.php">Forgot Password?</a>
-    </div>
-  </form>
-</div>
 </body>
+
 </html>

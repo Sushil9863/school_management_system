@@ -1,7 +1,11 @@
 <?php
 require '../partials/dbconnect.php';
+require 'check_admin.php'; // Session check (sets $_SESSION['school_id'])
 
+require '../vendor/autoload.php';
+use Dompdf\Dompdf;
 
+// Custom password hash (same as teachers/students)
 function custom_hash($password) {
     $salt = 'XyZ@2025!abc123';
     $rounds = 3;
@@ -21,80 +25,94 @@ function custom_hash($password) {
     return strtoupper($result);
 }
 
-require '../vendor/autoload.php';
-use Dompdf\Dompdf;
+$school_id = $_SESSION['school_id'] ?? 0;
 
-// Handle form actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $action = $_POST['action'] ?? '';
+    $action = $_POST['action'] ?? '';
 
-  if ($action === 'add') {
-    $full_name = $_POST['full_name'];
-    $contact = $_POST['contact'];
-    $address = $_POST['address'];
-    $email = $_POST['email'];
-    $username = $_POST['username'];
-    $password = password_hash($_POST['password'] ?? '', PASSWORD_DEFAULT);
+    if ($action === 'add') {
+        $full_name = $_POST['full_name'];
+        $contact = $_POST['contact'];
+        $address = $_POST['address'];
+        $email = $_POST['email'];
+        $username = $_POST['username'];
+        $password = custom_hash($_POST['password']);
 
-    $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt1->bind_param("ssssss", $full_name, $contact, $address, $email, $username, $password);
-    $stmt1->execute();
+        $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt1->bind_param("ssssssi", $full_name, $contact, $address, $email, $username, $password, $school_id);
+        $stmt1->execute();
 
-    $stmt2 = $conn->prepare("INSERT INTO users (username, type, password, email) VALUES (?, 'parent', ?, ?)");
-    $stmt2->bind_param("sss", $username, $password, $email);
-    $stmt2->execute();
-  }
+        $stmt2 = $conn->prepare("INSERT INTO users (username, type, password, email, school_id) VALUES (?, 'parent', ?, ?, ?)");
+        $stmt2->bind_param("sssi", $username, $password, $email, $school_id);
+        $stmt2->execute();
+    }
 
-  if ($action === 'edit') {
-    $id = $_POST['parent_id'];
-    $stmt = $conn->prepare("UPDATE parents SET full_name=?, contact=?, address=?, email=?, username=? WHERE id=?");
-    $stmt->bind_param("sssssi", $_POST['full_name'], $_POST['contact'], $_POST['address'], $_POST['email'], $_POST['username'], $id);
-    $stmt->execute();
+    if ($action === 'edit') {
+        $id = $_POST['parent_id'];
+        $stmt = $conn->prepare("UPDATE parents SET full_name=?, contact=?, address=?, email=?, username=? WHERE id=? AND school_id=?");
+        $stmt->bind_param("sssssii", $_POST['full_name'], $_POST['contact'], $_POST['address'], $_POST['email'], $_POST['username'], $id, $school_id);
+        $stmt->execute();
 
-    $stmt2 = $conn->prepare("UPDATE users SET email=? WHERE username=(SELECT username FROM parents WHERE id=?)");
-    $stmt2->bind_param("si", $_POST['email'], $id);
-    $stmt2->execute();
-  }
+        $stmt2 = $conn->prepare("UPDATE users SET email=? WHERE username=(SELECT username FROM parents WHERE id=? AND school_id=?) AND school_id=?");
+        $stmt2->bind_param("siii", $_POST['email'], $id, $school_id, $school_id);
+        $stmt2->execute();
+    }
 
-  if ($action === 'delete') {
-    $id = $_POST['parent_id'];
-    $res = $conn->query("SELECT username FROM parents WHERE id = $id");
-    $username = $res->fetch_assoc()['username'];
-    $conn->query("DELETE FROM users WHERE username = '$username' AND type='parent'");
-    $conn->query("DELETE FROM parents WHERE id = $id");
-  }
+    if ($action === 'delete') {
+        $id = $_POST['parent_id'];
+        $res = $conn->prepare("SELECT username FROM parents WHERE id=? AND school_id=?");
+        $res->bind_param("ii", $id, $school_id);
+        $res->execute();
+        $username = $res->get_result()->fetch_assoc()['username'] ?? '';
+
+        if ($username) {
+            $stmtDelUser = $conn->prepare("DELETE FROM users WHERE username=? AND type='parent' AND school_id=?");
+            $stmtDelUser->bind_param("si", $username, $school_id);
+            $stmtDelUser->execute();
+
+            $stmtDelParent = $conn->prepare("DELETE FROM parents WHERE id=? AND school_id=?");
+            $stmtDelParent->bind_param("ii", $id, $school_id);
+            $stmtDelParent->execute();
+        }
+    }
 }
 
-// Export PDF view in browser
 if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
-  $res = $conn->query("SELECT * FROM parents ORDER BY id DESC");
-  ob_start();
-  echo "<h2 style='text-align:center;'>Parent List</h2><table border='1' cellpadding='8' cellspacing='0' style='width:100%; font-size:14px;'>";
-  echo "<thead><tr><th>Full Name</th><th>Contact</th><th>Address</th><th>Email</th><th>Username</th></tr></thead><tbody>";
-  while ($row = $res->fetch_assoc()) {
-    echo "<tr>
-      <td>{$row['full_name']}</td>
-      <td>{$row['contact']}</td>
-      <td>{$row['address']}</td>
-      <td>{$row['email']}</td>
-      <td>{$row['username']}</td>
-    </tr>";
-  }
-  echo "</tbody></table>";
-  $html = ob_get_clean();
+    $stmt = $conn->prepare("SELECT * FROM parents WHERE school_id=? ORDER BY id DESC");
+    $stmt->bind_param("i", $school_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
 
-  $dompdf = new Dompdf();
-  $dompdf->loadHtml($html);
-  $dompdf->setPaper('A4', 'portrait');
-  $dompdf->render();
-  if (ob_get_length()) ob_end_clean();
-  header("Content-Type: application/pdf");
-  header("Content-Disposition: inline; filename=parents.pdf");
-  echo $dompdf->output();
-  exit;
+    ob_start();
+    echo "<h2 style='text-align:center;'>Parent List</h2><table border='1' cellpadding='8' cellspacing='0' style='width:100%; font-size:14px;'>";
+    echo "<thead><tr><th>Full Name</th><th>Contact</th><th>Address</th><th>Email</th><th>Username</th></tr></thead><tbody>";
+    while ($row = $res->fetch_assoc()) {
+        echo "<tr>
+          <td>{$row['full_name']}</td>
+          <td>{$row['contact']}</td>
+          <td>{$row['address']}</td>
+          <td>{$row['email']}</td>
+          <td>{$row['username']}</td>
+        </tr>";
+    }
+    echo "</tbody></table>";
+    $html = ob_get_clean();
+
+    $dompdf = new Dompdf();
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    if (ob_get_length()) ob_end_clean();
+    header("Content-Type: application/pdf");
+    header("Content-Disposition: inline; filename=parents.pdf");
+    echo $dompdf->output();
+    exit;
 }
 
-$parents = $conn->query("SELECT * FROM parents ORDER BY id DESC");
+$stmt = $conn->prepare("SELECT * FROM parents WHERE school_id=? ORDER BY id DESC");
+$stmt->bind_param("i", $school_id);
+$stmt->execute();
+$parents = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>

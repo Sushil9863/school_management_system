@@ -1,6 +1,9 @@
 <?php
 include '../partials/dbconnect.php';
 
+$user_type = $_SESSION['user_type'] ?? '';
+$school_id = $_SESSION['school_id'] ?? 0;
+
 // Handle add/edit/delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = $_POST['action'] ?? '';
@@ -19,7 +22,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($class_id === 'all') {
-      // Build name-to-marks map (subjects can differ by ID across classes)
       $marksMap = [];
       foreach ($subject_ids as $i => $sid) {
         $res = $conn->query("SELECT name FROM subjects WHERE id = " . (int)$sid);
@@ -31,12 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       }
 
-      // Create separate exam for each class
-      $class_q = $conn->query("SELECT id FROM classes");
+      $class_q = $conn->query("SELECT id FROM classes " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : ""));
       while ($cls = $class_q->fetch_assoc()) {
         $cid = $cls['id'];
-        $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, created_at) VALUES (?, ?, ?, NOW())");
-        $stmt->bind_param("ssi", $exam_name, $exam_type, $cid);
+        $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, school_id, created_at) VALUES (?, ?, ?, ?, NOW())");
+        $stmt->bind_param("ssii", $exam_name, $exam_type, $cid, $school_id);
         $stmt->execute();
         $exam_id = $stmt->insert_id;
 
@@ -53,9 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       }
     } else {
-      // Single class exam
-      $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, created_at) VALUES (?, ?, ?, NOW())");
-      $stmt->bind_param("ssi", $exam_name, $exam_type, $class_id);
+      $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, school_id, created_at) VALUES (?, ?, ?, ?, NOW())");
+      $stmt->bind_param("ssii", $exam_name, $exam_type, $class_id, $school_id);
       $stmt->execute();
       $exam_id = $stmt->insert_id;
 
@@ -111,16 +111,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $class_filter = $_GET['filter_class'] ?? 'all';
-$where = ($class_filter !== 'all') ? "WHERE classes.id = " . (int)$class_filter : '';
+$where = ($class_filter !== 'all') ? "AND classes.id = " . (int)$class_filter : '';
 $exams = $conn->query("
   SELECT exams.*, classes.grade, classes.section 
   FROM exams 
   JOIN classes ON exams.class_id = classes.id
-  $where
+  " . ($user_type !== 'superadmin' ? "WHERE exams.school_id = $school_id $where" : ($where ? "WHERE 1=1 $where" : "")) . "
   ORDER BY exams.id DESC
 ");
-$class_result = $conn->query("SELECT * FROM classes ORDER BY grade ASC");
-$all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY name");
+$class_result = $conn->query("SELECT * FROM classes " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : "") . " ORDER BY grade ASC");
+$all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : "") . " GROUP BY name");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -155,7 +155,7 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY 
       <table class="w-full table-auto border-collapse border">
         <thead>
           <tr class="bg-gray-200 text-left">
-            <th class="p-3 border">#</th>
+            <th class="p-3 border">S.No.</th>
             <th class="p-3 border">Exam Name</th>
             <th class="p-3 border">Class</th>
             <th class="p-3 border">Type</th>
@@ -213,8 +213,7 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY 
     </div>
   </div>
 
-
-  <!-- Edit Exam Modal -->
+  <!-- Edit Modal -->
   <div id="editExamModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center"
     onclick="closeEditModal(event)">
     <div onclick="event.stopPropagation();"
@@ -232,12 +231,8 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY 
           <select name="class_id" id="edit_class_id" class="w-full border px-3 py-2 rounded"
             onchange="loadEditSubjects()">
             <option value="">-- Select --</option>
-            <option value="all">All Classes</option>
-            <?php
-            // Reset pointer before fetching classes again
-            $class_result->data_seek(0);
-            while ($row = $class_result->fetch_assoc()):
-              ?>
+            <?php $class_result->data_seek(0);
+            while ($row = $class_result->fetch_assoc()): ?>
               <option value="<?= $row['id'] ?>">Grade <?= $row['grade'] ?> - <?= $row['section'] ?></option>
             <?php endwhile; ?>
           </select>
@@ -250,7 +245,7 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY 
     </div>
   </div>
 
-  <!-- Delete Confirm Modal -->
+  <!-- Delete Modal -->
   <div id="deleteExamModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center"
     onclick="closeDeleteModal(event)">
     <div onclick="event.stopPropagation();" class="bg-white max-w-md w-full p-6 rounded-xl shadow-xl">
@@ -268,114 +263,88 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects GROUP BY 
     </div>
   </div>
 
-
   <script>
-
-     // === Modal Open/Close Functions ===
-  function openExamModal() {
-    document.getElementById('examModal').classList.remove('hidden');
-  }
-
-  function closeModal(event) {
-    if (!event || event.target.id === 'examModal') {
-      document.getElementById('examModal').classList.add('hidden');
+    function openExamModal() {
+      document.getElementById('examModal').classList.remove('hidden');
     }
-  }
-
-  function openEditModal(exam) {
-    // Show modal
-    document.getElementById('editExamModal').classList.remove('hidden');
-
-    // Populate exam fields
-    document.getElementById('edit_exam_id').value = exam.id;
-    document.getElementById('edit_exam_name').value = exam.exam_name;
-    document.getElementById('edit_class_id').value = exam.class_id;
-
-    // Load subjects dynamically for editing
-    loadEditSubjects(exam.id, exam.class_id);
-  }
-
-  function closeEditModal(event) {
-    if (!event || event.target.id === 'editExamModal') {
-      document.getElementById('editExamModal').classList.add('hidden');
+    function closeModal(event) {
+      if (!event || event.target.id === 'examModal') {
+        document.getElementById('examModal').classList.add('hidden');
+      }
     }
-  }
-
-  function openDeleteModal(id, name) {
-    document.getElementById('deleteExamModal').classList.remove('hidden');
-    document.getElementById('delete_exam_id').value = id;
-    document.getElementById('deleteExamName').innerText = name;
-  }
-
-  function closeDeleteModal(event) {
-    if (!event || event.target.id === 'deleteExamModal') {
-      document.getElementById('deleteExamModal').classList.add('hidden');
+    function openEditModal(exam) {
+      document.getElementById('editExamModal').classList.remove('hidden');
+      document.getElementById('edit_exam_id').value = exam.id;
+      document.getElementById('edit_exam_name').value = exam.exam_name;
+      document.getElementById('edit_class_id').value = exam.class_id;
+      loadEditSubjects(exam.id, exam.class_id);
     }
-  }
-
-  // === Load Subjects into Edit Modal ===
-  function loadEditSubjects(exam_id, class_id) {
-    const container = document.getElementById('editSubjectContainer');
-    container.innerHTML = '';
-
-    // Fetch current subjects with marks for this exam
-    fetch('fetch_exam_subjects.php?exam_id=' + exam_id)
-      .then(res => res.json())
-      .then(data => {
-        // Get the subject list for this class (like in loadSubjects)
-        let filtered = (class_id === "all")
-          ? [...new Map(subjects.map(s => [s.name, s])).values()]
-          : subjects.filter(s => s.class_id == class_id);
-
-        filtered.forEach(s => {
-          const found = data.find(d => d.subject_id == s.id) || { full_marks: '', pass_marks: '' };
-          container.innerHTML += `
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input type="hidden" name="subject_id[]" value="${s.id}">
-              <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
-              <input type="number" name="full_marks[]" value="${found.full_marks}" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
-              <input type="number" name="pass_marks[]" value="${found.pass_marks}" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
-            </div>`;
+    function closeEditModal(event) {
+      if (!event || event.target.id === 'editExamModal') {
+        document.getElementById('editExamModal').classList.add('hidden');
+      }
+    }
+    function openDeleteModal(id, name) {
+      document.getElementById('deleteExamModal').classList.remove('hidden');
+      document.getElementById('delete_exam_id').value = id;
+      document.getElementById('deleteExamName').innerText = name;
+    }
+    function closeDeleteModal(event) {
+      if (!event || event.target.id === 'deleteExamModal') {
+        document.getElementById('deleteExamModal').classList.add('hidden');
+      }
+    }
+    function loadEditSubjects(exam_id, class_id) {
+      const container = document.getElementById('editSubjectContainer');
+      container.innerHTML = '';
+      fetch('fetch_exam_subjects.php?exam_id=' + exam_id)
+        .then(res => res.json())
+        .then(data => {
+          let filtered = (class_id === "all")
+            ? [...new Map(subjects.map(s => [s.name, s])).values()]
+            : subjects.filter(s => s.class_id == class_id);
+          filtered.forEach(s => {
+            const found = data.find(d => d.subject_id == s.id) || { full_marks: '', pass_marks: '' };
+            container.innerHTML += `
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="hidden" name="subject_id[]" value="${s.id}">
+                <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
+                <input type="number" name="full_marks[]" value="${found.full_marks}" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
+                <input type="number" name="pass_marks[]" value="${found.pass_marks}" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
+              </div>`;
+          });
         });
-      });
-  }
-
-  
-    // Handle Subjects Load (Fixed template literals)
+    }
     const subjects = <?php
-      $subs = $conn->query("SELECT id,name,class_id FROM subjects ORDER BY name");
+      $subs = $conn->query("SELECT id,name,class_id FROM subjects " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : "") . " ORDER BY name");
       $subs_array = [];
       while ($r = $subs->fetch_assoc()) { $subs_array[] = $r; }
       echo json_encode($subs_array);
     ?>;
-
     function loadSubjects() {
       const classId = document.getElementById("class_id").value;
       const container = document.getElementById("subjectContainer");
       container.innerHTML = "";
       if (!classId) { container.classList.add("hidden"); return; }
-
       let filtered = (classId === "all")
         ? [...new Map(subjects.map(s => [s.name, s])).values()]
         : subjects.filter(s => s.class_id == classId);
-
-      filtered.forEach(s => {
-        container.innerHTML += `
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input type="hidden" name="subject_id[]" value="${s.id}">
-            <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
-            <input type="number" name="full_marks[]" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
-            <input type="number" name="pass_marks[]" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
-          </div>`;
-      });
-      container.classList.remove("hidden");
+      if (filtered.length) {
+        filtered.forEach(s => {
+          container.innerHTML += `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <input type="hidden" name="subject_id[]" value="${s.id}">
+              <input type="text" value="${s.name}" disabled class="border px-2 py-1 bg-gray-100 rounded" />
+              <input type="number" name="full_marks[]" placeholder="Full Marks" required class="border px-2 py-1 rounded" />
+              <input type="number" name="pass_marks[]" placeholder="Pass Marks" required class="border px-2 py-1 rounded" />
+            </div>`;
+        });
+        container.classList.remove("hidden");
+      } else { container.classList.add("hidden"); }
     }
-
-    // Filter table
-    document.getElementById('filterClass').addEventListener('change', e => {
-      fetch('fetch_exams.php?filter_class=' + e.target.value)
-        .then(res => res.text())
-        .then(html => document.getElementById('examTableBody').innerHTML = html);
+    document.getElementById("filterClass").addEventListener("change", function() {
+      const classId = this.value;
+      window.location = "manage_exams.php?filter_class=" + classId;
     });
   </script>
 </body>
