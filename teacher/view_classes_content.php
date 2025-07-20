@@ -1,47 +1,49 @@
 <?php
 include '../partials/dbconnect.php';
-// session_start();
 
-// 🔐 Check if teacher is logged in
-
-
+// 🔐 Ensure logged-in teacher
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'teacher') {
-  header("Location: ../index.php");
-  exit;
+    header("Location: ../index.php");
+    exit;
 }
 
 $teacher_username = $_SESSION['username'];
 
-// 🧠 Get teacher ID
-$stmt = $conn->prepare("SELECT id, full_name FROM teachers WHERE username = ?");
+// 🔹 Get teacher info with school_id
+$stmt = $conn->prepare("SELECT id, full_name, school_id FROM teachers WHERE username = ?");
 $stmt->bind_param("s", $teacher_username);
 $stmt->execute();
 $result = $stmt->get_result();
-$teacher = $result->fetch_assoc();
 
+if ($result->num_rows === 0) {
+    die("Unauthorized: Teacher not found.");
+}
+
+$teacher = $result->fetch_assoc();
 $teacher_id = $teacher['id'];
 $teacher_name = $teacher['full_name'];
+$school_id = $teacher['school_id'];
 
-// 📚 Fetch classes & subjects assigned to this teacher
-$stmt = $conn->prepare("SELECT c.grade, c.section, c.type, s.name AS subject_name
-                        FROM subjects s
-                        JOIN classes c ON s.class_id = c.id
-                        WHERE s.teacher_id = ?
-                        ORDER BY c.grade ASC, c.section ASC");
-$stmt->bind_param("i", $teacher_id);
+// 📚 Fetch only classes & subjects for this teacher's school
+$stmt = $conn->prepare("
+    SELECT c.grade, c.section, c.type, s.name AS subject_name
+    FROM subjects s
+    JOIN classes c ON s.class_id = c.id
+    WHERE s.teacher_id = ? AND c.school_id = ?
+    ORDER BY c.grade ASC, c.section ASC
+");
+$stmt->bind_param("ii", $teacher_id, $school_id);
 $stmt->execute();
 $assigned = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>My Classes</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-
 <body class="bg-gray-100 min-h-screen p-6">
   <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
     <h1 class="text-3xl font-bold text-gray-800 mb-4">👨‍🏫 Welcome, <?= htmlspecialchars($teacher_name) ?></h1>
@@ -73,5 +75,4 @@ $assigned = $stmt->get_result();
     <?php endif; ?>
   </div>
 </body>
-
 </html>
