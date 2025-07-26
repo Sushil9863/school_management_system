@@ -3,13 +3,13 @@ include '../partials/dbconnect.php';
 
 // Start session if not already
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+  session_start();
 }
 
 // Check teacher session
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'teacher') {
-    header("Location: ../index.php");
-    exit;
+  header("Location: ../index.php");
+  exit;
 }
 
 $teacher_username = $_SESSION['username'];
@@ -22,7 +22,7 @@ $result = $stmt->get_result();
 $teacher = $result->fetch_assoc();
 
 if (!$teacher) {
-    die("Teacher not found.");
+  die("Teacher not found.");
 }
 
 $teacher_id = $teacher['id'];
@@ -52,40 +52,52 @@ $classIds = array_unique(array_column($assigned, 'class_id'));
 // Fetch exams for those classes, restricted by school_id
 $examsByClass = [];
 if (!empty($classIds)) {
-    $placeholders = implode(',', array_fill(0, count($classIds), '?'));
-    $types = str_repeat('i', count($classIds)) . 'i'; // all class IDs + school_id
+  $placeholders = implode(',', array_fill(0, count($classIds), '?'));
+  $types = str_repeat('i', count($classIds)) . 'i'; // all class IDs + school_id
 
-    $sql = "SELECT * FROM exams 
-            WHERE class_id IN ($placeholders) AND school_id = ? 
-            ORDER BY class_id, created_at DESC";
-    $stmtExams = $conn->prepare($sql);
+  $sql = "SELECT * FROM exams 
+        WHERE (class_id IN ($placeholders) OR class_id IS NULL) 
+          AND school_id = ? 
+        ORDER BY class_id, created_at DESC";
 
-    // Merge params (class IDs + school_id)
-    $params = array_merge($classIds, [$school_id]);
-    $stmtExams->bind_param($types, ...$params);
+  $stmtExams = $conn->prepare($sql);
 
-    $stmtExams->execute();
-    $examsResult = $stmtExams->get_result();
+  // Merge params (class IDs + school_id)
+  $params = array_merge($classIds, [$school_id]);
+  $stmtExams->bind_param($types, ...$params);
 
-    while ($exam = $examsResult->fetch_assoc()) {
+  $stmtExams->execute();
+  $examsResult = $stmtExams->get_result();
+
+  while ($exam = $examsResult->fetch_assoc()) {
+    if ($exam['class_id'] === null) {
+        // This is a global exam – assign to all teacher classes
+        foreach ($classIds as $cid) {
+            $examsByClass[$cid][] = $exam;
+        }
+    } else {
         $examsByClass[$exam['class_id']][] = $exam;
     }
+}
+
 }
 
 // Group subjects by class_id
 $subjectsByClass = [];
 foreach ($assigned as $row) {
-    $subjectsByClass[$row['class_id']][] = $row;
+  $subjectsByClass[$row['class_id']][] = $row;
 }
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>Teacher Exams & Marks Entry</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body class="bg-gray-100 min-h-screen p-6">
   <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow space-y-8 mt-6">
     <h1 class="text-3xl font-bold text-gray-800">👨‍🏫 Welcome, <?= htmlspecialchars($teacher_name) ?></h1>
@@ -97,7 +109,7 @@ foreach ($assigned as $row) {
       <?php foreach ($subjectsByClass as $class_id => $subjects): ?>
         <?php
         $classInfo = $subjects[0]; // contains grade, section, type
-        $exams = $examsByClass[$class_id] ?? [];
+        $exams = $examsByClass[$class_id];
         ?>
         <div class="border rounded-lg shadow p-4 bg-gray-50">
           <h3 class="text-xl font-semibold text-blue-800 mb-2">
@@ -166,7 +178,8 @@ foreach ($assigned as $row) {
         <div id="marksStudentList" class="space-y-4 max-h-96 overflow-y-auto border p-2 rounded bg-gray-50"></div>
 
         <div class="mt-6 text-right">
-          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">✅ Submit Marks</button>
+          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">✅ Submit
+            Marks</button>
         </div>
       </form>
     </div>
@@ -233,4 +246,5 @@ foreach ($assigned as $row) {
     }
   </script>
 </body>
+
 </html>

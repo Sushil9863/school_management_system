@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($class_id === 'all') {
+      // Map subjects by name to reuse full/pass marks across classes
       $marksMap = [];
       foreach ($subject_ids as $i => $sid) {
         $res = $conn->query("SELECT name FROM subjects WHERE id = " . (int)$sid);
@@ -33,14 +34,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       }
 
+      // Create ONE global exam (no class_id, NULL class_id for global)
+      $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, school_id, created_at) VALUES (?, ?, ?, NOW())");
+      $stmt->bind_param("ssi", $exam_name, $exam_type, $school_id);
+      $stmt->execute();
+      $exam_id = $stmt->insert_id;
+
+      // Attach all subjects from all classes to this one exam
       $class_q = $conn->query("SELECT id FROM classes " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : ""));
       while ($cls = $class_q->fetch_assoc()) {
         $cid = $cls['id'];
-        $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, school_id, created_at) VALUES (?, ?, ?, ?, NOW())");
-        $stmt->bind_param("ssii", $exam_name, $exam_type, $cid, $school_id);
-        $stmt->execute();
-        $exam_id = $stmt->insert_id;
-
         $sub_q = $conn->query("SELECT id, name FROM subjects WHERE class_id = $cid");
         while ($sub = $sub_q->fetch_assoc()) {
           $sid = $sub['id'];
@@ -54,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       }
     } else {
+      // Single class exam (old behavior remains)
       $stmt = $conn->prepare("INSERT INTO exams (exam_name, exam_type, class_id, school_id, created_at) VALUES (?, ?, ?, ?, NOW())");
       $stmt->bind_param("ssii", $exam_name, $exam_type, $class_id, $school_id);
       $stmt->execute();
@@ -79,17 +83,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_marks = $_POST['full_marks'] ?? [];
     $pass_marks = $_POST['pass_marks'] ?? [];
 
-    if (empty($exam_id) || empty($name) || empty($class_id)) {
+    if (empty($exam_id) || empty($name)) {
       echo "<script>alert('Missing data.'); window.history.back();</script>";
       exit;
     }
 
-    $stmt = $conn->prepare("UPDATE exams SET exam_name = ?, class_id = ? WHERE id = ?");
-    $stmt->bind_param("sii", $name, $class_id, $exam_id);
-    $stmt->execute();
+    // Update exam (if this was an "all classes" exam, class_id stays NULL)
+    if ($class_id === 'all') {
+      $stmt = $conn->prepare("UPDATE exams SET exam_name = ? WHERE id = ?");
+      $stmt->bind_param("si", $name, $exam_id);
+      $stmt->execute();
+    } else {
+      $stmt = $conn->prepare("UPDATE exams SET exam_name = ?, class_id = ? WHERE id = ?");
+      $stmt->bind_param("sii", $name, $class_id, $exam_id);
+      $stmt->execute();
+    }
 
     $conn->query("DELETE FROM exam_subjects WHERE exam_id = " . (int)$exam_id);
-
     foreach ($subject_ids as $i => $sid) {
       $fm = (int)$full_marks[$i];
       $pm = (int)$pass_marks[$i];
@@ -110,16 +120,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
+// Fetch classes for filters
 $class_filter = $_GET['filter_class'] ?? 'all';
-$where = ($class_filter !== 'all') ? "AND classes.id = " . (int)$class_filter : '';
+$whereClass = ($class_filter !== 'all') ? "AND c.id = " . (int)$class_filter : '';
+
+// Fetch exams: now handle exams without class_id (global)
 $exams = $conn->query("
-  SELECT exams.*, classes.grade, classes.section 
-  FROM exams 
-  JOIN classes ON exams.class_id = classes.id
-  " . ($user_type !== 'superadmin' ? "WHERE exams.school_id = $school_id $where" : ($where ? "WHERE 1=1 $where" : "")) . "
-  ORDER BY exams.id DESC
+  SELECT e.*, c.grade, c.section
+  FROM exams e
+  LEFT JOIN classes c ON e.class_id = c.id
+  " . ($user_type !== 'superadmin'
+    ? "WHERE e.school_id = $school_id $whereClass"
+    : ($whereClass ? "WHERE 1=1 $whereClass" : "")) . "
+  ORDER BY e.id DESC
 ");
+
 $class_result = $conn->query("SELECT * FROM classes " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : "") . " ORDER BY grade ASC");
+
 $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects " . ($user_type !== 'superadmin' ? "WHERE school_id = $school_id" : "") . " GROUP BY name");
 ?>
 <!DOCTYPE html>
@@ -167,7 +184,9 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects " . ($use
             <tr class="hover:bg-gray-100">
               <td class="p-3 border"><?= $i++ ?></td>
               <td class="p-3 border"><?= htmlspecialchars($row['exam_name']) ?></td>
-              <td class="p-3 border">Grade <?= $row['grade'] ?> - <?= $row['section'] ?></td>
+              <td class="p-3 border">
+                <?= $row['class_id'] ? "Grade {$row['grade']} - {$row['section']}" : "All Classes" ?>
+              </td>
               <td class="p-3 border"><?= htmlspecialchars($row['exam_type']) ?></td>
               <td class="p-3 border">
                 <button onclick='openEditModal(<?= json_encode($row) ?>)' class="px-3 py-1 bg-yellow-400 text-white rounded">✏️</button>
@@ -343,9 +362,9 @@ $all_subjects = $conn->query("SELECT MIN(id) AS id, name FROM subjects " . ($use
       } else { container.classList.add("hidden"); }
     }
     document.getElementById("filterClass").addEventListener("change", function() {
-      const classId = this.value;
-      window.location = "manage_exams.php?filter_class=" + classId;
+      window.location = "manage_exams.php?filter_class=" + this.value;
     });
+  </script>
   </script>
 </body>
 </html>

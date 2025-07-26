@@ -4,11 +4,13 @@ include '../partials/dbconnect.php';
 
 header('Content-Type: application/json');
 
+// Check teacher session
 if (!isset($_SESSION['username']) || $_SESSION['user_type'] !== 'teacher') {
     echo json_encode(['success' => false, 'error' => 'Unauthorized']);
     exit;
 }
 
+// Validate required params
 if (!isset($_GET['class_id'], $_GET['exam_id'], $_GET['subject_id'])) {
     echo json_encode(['success' => false, 'error' => 'Missing parameters']);
     exit;
@@ -19,7 +21,7 @@ $class_id = (int)$_GET['class_id'];
 $exam_id = (int)$_GET['exam_id'];
 $subject_id = (int)$_GET['subject_id'];
 
-// Get teacher and school
+// Get teacher and school info
 $stmt = $conn->prepare("SELECT id, school_id FROM teachers WHERE username = ?");
 $stmt->bind_param("s", $teacher_username);
 $stmt->execute();
@@ -34,9 +36,10 @@ if (!$teacher) {
 $teacher_id = $teacher['id'];
 $school_id = $teacher['school_id'];
 
-// Verify subject and class assigned to teacher and school
+// Verify teacher is assigned to the subject/class in this school
 $stmt = $conn->prepare("
-    SELECT s.id FROM subjects s 
+    SELECT s.id 
+    FROM subjects s 
     JOIN classes c ON s.class_id = c.id 
     WHERE s.id = ? AND c.id = ? AND s.teacher_id = ? AND c.school_id = ?
 ");
@@ -48,8 +51,14 @@ if ($stmt->num_rows === 0) {
     exit;
 }
 
-// Verify exam belongs to same class and school
-$stmt = $conn->prepare("SELECT id FROM exams WHERE id = ? AND class_id = ? AND school_id = ?");
+// Verify the exam is valid for this school and class (allow global exams with NULL class_id)
+$stmt = $conn->prepare("
+    SELECT id 
+    FROM exams 
+    WHERE id = ? 
+      AND (class_id = ? OR class_id IS NULL) 
+      AND school_id = ?
+");
 $stmt->bind_param("iii", $exam_id, $class_id, $school_id);
 $stmt->execute();
 $stmt->store_result();
@@ -58,7 +67,7 @@ if ($stmt->num_rows === 0) {
     exit;
 }
 
-// Get full marks from exam_subjects table
+// Get full marks for this subject in this exam (default 100 if not set)
 $stmt = $conn->prepare("SELECT full_marks FROM exam_subjects WHERE exam_id = ? AND subject_id = ?");
 $stmt->bind_param("ii", $exam_id, $subject_id);
 $stmt->execute();
@@ -66,10 +75,12 @@ $result = $stmt->get_result();
 $row = $result->fetch_assoc();
 $full_marks = $row ? (int)$row['full_marks'] : 100;
 
-// Fetch students for this class and school
+// Fetch students for the class
 $stmt = $conn->prepare("
     SELECT s.id, s.full_name,
-    (SELECT marks FROM marks WHERE exam_id = ? AND subject_id = ? AND student_id = s.id) AS marks
+           (SELECT marks 
+            FROM marks 
+            WHERE exam_id = ? AND subject_id = ? AND student_id = s.id) AS marks
     FROM students s
     WHERE s.class_id = ? AND s.school_id = ?
     ORDER BY s.full_name ASC

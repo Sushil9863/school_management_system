@@ -54,8 +54,13 @@ if ($check->num_rows === 0) {
     exit;
 }
 
-// Check that exam belongs to the same class and school
-$examCheck = $conn->prepare("SELECT id FROM exams WHERE id = ? AND class_id = ? AND school_id = ?");
+// Check that exam is valid for this school and class (allow global exams with NULL class_id)
+$examCheck = $conn->prepare("
+    SELECT id FROM exams 
+    WHERE id = ? 
+      AND (class_id = ? OR class_id IS NULL) 
+      AND school_id = ?
+");
 $examCheck->bind_param("iii", $exam_id, $class_id, $school_id);
 $examCheck->execute();
 $examCheck->store_result();
@@ -69,16 +74,16 @@ for ($i = 0; $i < count($student_ids); $i++) {
     $student_id = (int)$student_ids[$i];
     $mark = (int)$marks[$i];
 
-    // Ensure student is part of this class and school
+    // Ensure student belongs to this class and school
     $studentCheck = $conn->prepare("SELECT id FROM students WHERE id = ? AND class_id = ? AND school_id = ?");
     $studentCheck->bind_param("iii", $student_id, $class_id, $school_id);
     $studentCheck->execute();
     $studentCheck->store_result();
     if ($studentCheck->num_rows === 0) {
-        continue; // Skip invalid student
+        continue; // skip invalid students
     }
 
-    // Insert or update marks securely
+    // Insert or update marks
     $stmt = $conn->prepare("
         INSERT INTO marks (exam_id, subject_id, student_id, marks)
         VALUES (?, ?, ?, ?)
