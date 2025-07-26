@@ -6,7 +6,7 @@ $school_id = $_SESSION['school_id'] ?? 1;  // fallback
 // Fetch unique exams for dropdown
 $exams = [];
 $examQuery = $conn->query("
-    SELECT DISTINCT exam_name, id 
+    SELECT DISTINCT exam_name, id, exam_type 
     FROM exams 
     WHERE school_id = $school_id
     ORDER BY exam_name
@@ -15,8 +15,8 @@ while ($row = $examQuery->fetch_assoc()) {
     $exams[] = $row;
 }
 
-// Add "Final" option to exams array
-array_unshift($exams, ['id' => 'final', 'exam_name' => 'Final Result']);
+// Add "Final Exam" option to exams array
+array_unshift($exams, ['id' => '0', 'exam_name' => 'Final Exam', 'exam_type' => 'Final']);
 
 // Fetch classes for dropdown
 $classes = [];
@@ -45,8 +45,7 @@ foreach ($classes as $class) {
 }
 
 // Grading function
-function getGradeAndGPA($percent)
-{
+function getGradeAndGPA($percent) {
     if ($percent >= 90) return ['A+', 4.0];
     if ($percent >= 80) return ['A', 3.6];
     if ($percent >= 70) return ['B+', 3.2];
@@ -84,20 +83,14 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
         if (!empty($classIds)) {
             $classIdList = implode(',', $classIds);
 
-            // Subjects grouped by name
-            $subjectMap = [];
+            // Get all subjects for these classes
             $subRes = $conn->query("
                 SELECT id, name FROM subjects
                 WHERE class_id IN ($classIdList)
                 ORDER BY name
             ");
             while ($sub = $subRes->fetch_assoc()) {
-                $name = $sub['name'];
-                if (!isset($subjectMap[$name])) $subjectMap[$name] = [];
-                $subjectMap[$name][] = $sub['id'];
-            }
-            foreach ($subjectMap as $name => $ids) {
-                $subjects[] = ['name' => $name, 'ids' => $ids];
+                $subjects[$sub['id']] = $sub['name'];
             }
 
             // Students - apply section filter here
@@ -130,13 +123,10 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
 
             if (!empty($studentIds) && !empty($subjects)) {
                 $ids = implode(',', $studentIds);
-                $allSubIds = [];
-                foreach ($subjects as $s) $allSubIds = array_merge($allSubIds, $s['ids']);
-                $allSubIds = array_unique($allSubIds);
-                $allSubIdsStr = implode(',', $allSubIds);
+                $allSubIdsStr = implode(',', array_keys($subjects));
 
-                if ($exam_id === 'final') {
-                    // FINAL RESULT - Aggregate all terminal exams
+                if ($exam_id === '0') {
+                    // FINAL EXAM - Calculate average of all terminal exams
                     
                     // Get all terminal exams for this school
                     $terminalExams = [];
@@ -150,63 +140,63 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                     }
                     
                     if (!empty($terminalExams)) {
-                        // Process each terminal exam
-                        foreach ($terminalExams as $terminalExamId) {
-                            // Get full marks for each subject in this exam
-                            $fullMarksRes = $conn->query("
-                                SELECT subject_id, full_marks, pass_marks 
-                                FROM exam_subjects 
-                                WHERE exam_id = $terminalExamId AND subject_id IN ($allSubIdsStr)
-                            ");
-                            $examMarksInfo = [];
-                            while ($row = $fullMarksRes->fetch_assoc()) {
-                                $examMarksInfo[$row['subject_id']] = [
-                                    'full_marks' => floatval($row['full_marks']),
-                                    'pass_marks' => floatval($row['pass_marks'])
-                                ];
-                            }
+    $finalFullMarks = [];
+    $finalPassMarks = [];
 
-                            // Get marks for this exam
-                            $marksRes = $conn->query("
-                                SELECT student_id, subject_id, marks 
-                                FROM marks
-                                WHERE exam_id = $terminalExamId AND student_id IN ($ids) AND subject_id IN ($allSubIdsStr)
-                            ");
-                            while ($m = $marksRes->fetch_assoc()) {
-                                foreach ($subjects as $subj) {
-                                    if (in_array($m['subject_id'], $subj['ids'])) {
-                                        if (!isset($results[$m['student_id']]['marks'][$subj['name']])) {
-                                            $results[$m['student_id']]['marks'][$subj['name']] = 0;
-                                        }
-                                        // Add marks (we'll average later)
-                                        $results[$m['student_id']]['marks'][$subj['name']] += (float)$m['marks'];
-                                        
-                                        // Store full and pass marks for each subject (use first exam's values)
-                                        if (!isset($results[$m['student_id']]['subject_full'][$subj['name']])) {
-                                            $results[$m['student_id']]['subject_full'][$subj['name']] = $examMarksInfo[$m['subject_id']]['full_marks'] ?? 0;
-                                            $results[$m['student_id']]['subject_pass'][$subj['name']] = $examMarksInfo[$m['subject_id']]['pass_marks'] ?? 0;
-                                        }
-                                    }
-                                }
-                                // Increment exam count for each student who has marks
-                                if (isset($m['student_id'])) {
-                                    $results[$m['student_id']]['exam_count']++;
-                                }
-                            }
-                        }
-                        
-                        // Calculate averages for final result
-                        foreach ($results as &$st) {
-                            $st['exam_count'] = $st['exam_count'] ?? 0;
-                            if ($st['exam_count'] > 0) {
-                                foreach ($st['marks'] as $subject => &$mark) {
-                                    $mark = $mark / $st['exam_count']; // Average marks
-                                }
-                                unset($mark);
-                            }
-                        }
-                        unset($st);
-                    }
+    // Sum full/pass marks of all terminal exams per subject
+    foreach ($terminalExams as $terminalExamId) {
+        $fullMarksRes = $conn->query("
+            SELECT subject_id, full_marks, pass_marks 
+            FROM exam_subjects 
+            WHERE exam_id = $terminalExamId AND subject_id IN ($allSubIdsStr)
+        ");
+        while ($row = $fullMarksRes->fetch_assoc()) {
+            $subject_id = $row['subject_id'];
+            $finalFullMarks[$subject_id] = ($finalFullMarks[$subject_id] ?? 0) + floatval($row['full_marks']);
+            $finalPassMarks[$subject_id] = ($finalPassMarks[$subject_id] ?? 0) + floatval($row['pass_marks']);
+        }
+    }
+
+    // Process each terminal exam
+    foreach ($terminalExams as $terminalExamId) {
+        // Get marks for this exam
+        $marksRes = $conn->query("
+            SELECT student_id, subject_id, marks 
+            FROM marks
+            WHERE exam_id = $terminalExamId AND student_id IN ($ids) AND subject_id IN ($allSubIdsStr)
+        ");
+        while ($m = $marksRes->fetch_assoc()) {
+            $subjectName = $subjects[$m['subject_id']] ?? 'Unknown';
+
+            if (!isset($results[$m['student_id']]['marks'][$subjectName])) {
+                $results[$m['student_id']]['marks'][$subjectName] = 0;
+            }
+            // Add marks (we'll average later)
+            $results[$m['student_id']]['marks'][$subjectName] += (float)$m['marks'];
+
+            // Assign summed full and pass marks for final exam
+            if (!isset($results[$m['student_id']]['subject_full'][$subjectName])) {
+                $results[$m['student_id']]['subject_full'][$subjectName] = $finalFullMarks[$m['subject_id']] ?? 0;
+                $results[$m['student_id']]['subject_pass'][$subjectName] = $finalPassMarks[$m['subject_id']] ?? 0;
+            }
+
+            // Increment exam count for this student
+            $results[$m['student_id']]['exam_count']++;
+        }
+    }
+
+    // Calculate averages for final result
+    foreach ($results as &$st) {
+        $examCount = $st['exam_count'] > 0 ? $st['exam_count'] : 1; // Avoid division by zero
+
+        foreach ($st['marks'] as $subject => &$mark) {
+            $mark = $mark / $examCount; // Average marks
+        }
+        unset($mark);
+    }
+    unset($st);
+}
+
                 } else {
                     // SINGLE EXAM RESULT
                     
@@ -217,7 +207,8 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                         WHERE exam_id = $exam_id AND subject_id IN ($allSubIdsStr)
                     ");
                     while ($row = $res->fetch_assoc()) {
-                        $marksInfo[$row['subject_id']] = [
+                        $subjectName = $subjects[$row['subject_id']] ?? 'Unknown';
+                        $marksInfo[$subjectName] = [
                             'full_marks' => floatval($row['full_marks']),
                             'pass_marks' => floatval($row['pass_marks'])
                         ];
@@ -230,61 +221,60 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                         WHERE exam_id = $exam_id AND student_id IN ($ids) AND subject_id IN ($allSubIdsStr)
                     ");
                     while ($m = $marksRes->fetch_assoc()) {
-                        foreach ($subjects as $subj) {
-                            if (in_array($m['subject_id'], $subj['ids'])) {
-                                if (!isset($results[$m['student_id']]['marks'][$subj['name']])) {
-                                    $results[$m['student_id']]['marks'][$subj['name']] = 0;
-                                }
-                                $results[$m['student_id']]['marks'][$subj['name']] += (float)$m['marks'];
-                                
-                                // Store full and pass marks for each subject
-                                if (!isset($results[$m['student_id']]['subject_full'][$subj['name']])) {
-                                    $results[$m['student_id']]['subject_full'][$subj['name']] = 0;
-                                    $results[$m['student_id']]['subject_pass'][$subj['name']] = 0;
-                                }
-                                
-                                // Add to the full and pass marks for this subject
-                                $results[$m['student_id']]['subject_full'][$subj['name']] += $marksInfo[$m['subject_id']]['full_marks'] ?? 0;
-                                $results[$m['student_id']]['subject_pass'][$subj['name']] += $marksInfo[$m['subject_id']]['pass_marks'] ?? 0;
-                            }
+                        $subjectName = $subjects[$m['subject_id']] ?? 'Unknown';
+                        
+                        if (!isset($results[$m['student_id']]['marks'][$subjectName])) {
+                            $results[$m['student_id']]['marks'][$subjectName] = 0;
+                        }
+                        $results[$m['student_id']]['marks'][$subjectName] = (float)$m['marks']; // Use actual marks, not sum
+                        
+                        // Store full and pass marks for each subject
+                        if (!isset($results[$m['student_id']]['subject_full'][$subjectName])) {
+                            $results[$m['student_id']]['subject_full'][$subjectName] = $marksInfo[$subjectName]['full_marks'] ?? 0;
+                            $results[$m['student_id']]['subject_pass'][$subjectName] = $marksInfo[$subjectName]['pass_marks'] ?? 0;
                         }
                     }
                 }
 
-                // Final totals per student
+                // Calculate final totals and results for each student
                 foreach ($results as &$st) {
                     $totalMarks = 0;
                     $totalFullMarks = 0;
                     $pass = true;
+                    $totalGPA = 0;
+                    $subjectCount = 0;
 
-                    foreach ($subjects as $subj) {
-                        $mark = $st['marks'][$subj['name']] ?? 0;
-                        $subjFullMarks = $st['subject_full'][$subj['name']] ?? 0;
-                        $subjPassMarks = $st['subject_pass'][$subj['name']] ?? 0;
+                    foreach ($st['marks'] as $subject => $mark) {
+                        $subjFullMarks = $st['subject_full'][$subject] ?? 0;
+                        $subjPassMarks = $st['subject_pass'][$subject] ?? 0;
 
                         $totalMarks += $mark;
                         $totalFullMarks += $subjFullMarks;
 
+                        // Calculate GPA for each subject
+                        $subjectPercent = $subjFullMarks ? ($mark / $subjFullMarks) * 100 : 0;
+                        [$letter, $gpa] = getGradeAndGPA($subjectPercent);
+                        $totalGPA += $gpa;
+                        $subjectCount++;
+
                         if ($mark < $subjPassMarks) $pass = false;
                     }
 
-                    $st['total'] = $totalMarks;
+                    $st['total'] = round($totalMarks, 2);
                     $st['percent'] = $totalFullMarks ? round(($totalMarks / $totalFullMarks) * 100, 2) : 0;
                     $st['result'] = ($view_mode === 'grades') ? '-' : ($pass ? 'Pass' : 'Fail');
                     [$letter, $gpa] = getGradeAndGPA($st['percent']);
                     $st['letter'] = $letter;
-                    $st['gpa'] = $gpa;
+                    $st['gpa'] = $subjectCount > 0 ? round($totalGPA / $subjectCount, 2) : 0; // Average GPA across subjects
                 }
                 unset($st);
 
                 // Sort results based on view mode
                 if ($view_mode === 'grades') {
-                    // Sort by GPA descending
                     uasort($results, function($a, $b) {
                         return $b['gpa'] <=> $a['gpa'];
                     });
                 } else {
-                    // Sort by percentage descending (for both marks and consolidated views)
                     uasort($results, function($a, $b) {
                         return $b['percent'] <=> $a['percent'];
                     });
@@ -406,8 +396,20 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                         <th>No.</th>
                         <th>Name</th>
                         <th>Section</th>
-                        <?php foreach ($subjects as $sub): ?>
-                            <th><?= htmlspecialchars($sub['name']) ?></th>
+                        <?php 
+                        // Get unique subject names
+                        $uniqueSubjects = [];
+                        foreach ($results as $student) {
+                            foreach ($student['marks'] as $subject => $mark) {
+                                if (!in_array($subject, $uniqueSubjects)) {
+                                    $uniqueSubjects[] = $subject;
+                                }
+                            }
+                        }
+                        sort($uniqueSubjects);
+                        
+                        foreach ($uniqueSubjects as $subject): ?>
+                            <th><?= htmlspecialchars($subject) ?></th>
                         <?php endforeach; ?>
                         <th class="<?= $view_mode === 'grades' ? 'hidden' : '' ?>">Total</th>
                         <th class="<?= $view_mode === 'grades' ? 'hidden' : '' ?>">Percent</th>
@@ -418,18 +420,17 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                 </thead>
                 <tbody>
                     <?php $sn=1; foreach ($results as $st): ?>
-                        <tr class="<?= ($_GET['exam_id'] ?? '') === 'final' ? 'final-result' : '' ?>">
+                        <tr class="<?= ($_GET['exam_id'] ?? '') === '0' ? 'final-result' : '' ?>">
                             <td><?= $sn++ ?></td>
                             <td><?= htmlspecialchars($st['full_name']) ?></td>
                             <td><?= htmlspecialchars($st['section']) ?></td>
-                            <?php foreach ($subjects as $sub):
-                                $mark = $st['marks'][$sub['name']] ?? 0;
-                                $full = $st['subject_full'][$sub['name']] ?? 0;
-                                $pass = $st['subject_pass'][$sub['name']] ?? 0;
+                            <?php foreach ($uniqueSubjects as $subject):
+                                $mark = $st['marks'][$subject] ?? 0;
+                                $full = $st['subject_full'][$subject] ?? 0;
+                                $pass = $st['subject_pass'][$subject] ?? 0;
                                 $percent = $full ? ($mark/$full)*100 : 0;
                                 [$letter,$gpa]=getGradeAndGPA($percent);
-                                $failClass=($mark < $pass && $view_mode !== 'grades')?'fail-mark':'';
-                                ?>
+                                $failClass=($mark < $pass && $view_mode !== 'grades')?'fail-mark':''; ?>
                                 <td class="<?= $failClass ?>">
                                     <?php if ($view_mode==='marks'): ?>
                                         <?= round($mark, 2) ?>/<?= $full ?>
