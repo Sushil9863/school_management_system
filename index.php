@@ -142,33 +142,15 @@
   <?php
   session_start();
   include 'partials/dbconnect.php';
+  include 'partials/algorithms.php';
 
   // Your PHP login logic unchanged
   if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
-    function custom_hash($password)
-    {
-      $salt = 'XyZ@2025!abc123';
-      $rounds = 3;
-      $result = $password;
-      for ($r = 0; $r < $rounds; $r++) {
-        $temp = '';
-        for ($i = 0; $i < strlen($result); $i++) {
-          $char = ord($result[$i]);
-          $saltChar = ord($salt[$i % strlen($salt)]);
-          $mix = ($char ^ $saltChar) + ($char << 1);
-          $hex = dechex($mix);
-          $temp .= $hex;
-        }
-        $base64 = base64_encode($temp);
-        $result = substr($temp, 0, 16) . substr($base64, -16);
-      }
-      return strtoupper($result);
-    }
 
-    $hashed_password = custom_hash($password);
+    $hashed_password = custom_password_hash($password);
 
     $stmt = $conn->prepare("SELECT * FROM users WHERE username = ? AND password = ?");
     $stmt->bind_param("ss", $username, $hashed_password);
@@ -176,35 +158,44 @@
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {
-      $row = $result->fetch_assoc();
-      $_SESSION['user_id'] = $row['id'];
-      $_SESSION['username'] = $row['username'];
-      $_SESSION['user_type'] = $row['type'];
-      $_SESSION['school_id'] = $row['school_id']; 
-  
-      switch ($row['type']) {
+    $row = $result->fetch_assoc();
+
+    // Set session values
+    $_SESSION['user_id'] = $row['id'];
+    $_SESSION['username'] = $row['username'];
+    $_SESSION['user_type'] = $row['type'];
+    $_SESSION['school_id'] = $row['school_id'];
+
+    // Log the login
+    $user_id = $row['id'];
+    $school_id = $row['school_id'];
+    $conn->query("INSERT INTO login_logs (user_id, school_id) VALUES ($user_id, $school_id)");
+
+    // Redirect based on user type
+    switch ($row['type']) {
         case 'superadmin':
-          header("Location: superadmin/superadmin_dashboard.php");
-          break;
+            header("Location: superadmin/superadmin_dashboard.php");
+            break;
         case 'admin':
-          header("Location: admin/admin_dashboard.php");
-          break;
+            header("Location: admin/admin_dashboard.php");
+            break;
         case 'teacher':
-          header("Location: teacher/teacher_dashboard.php");
-          break;
+            header("Location: teacher/teacher_dashboard.php");
+            break;
         case 'parents':
-          header("Location: parents/parents_dashboard.php");
-          break;
+            header("Location: parents/parents_dashboard.php");
+            break;
         case 'accountant':
-          header("Location: accountant/accountant_dashboard.php");
-          break;
+            header("Location: accountant/accountant_dashboard.php");
+            break;
         default:
-          echo "Invalid user type.";
-      }
-      exit();
-    } else {
-      echo "<script>alert('Invalid username or password');</script>";
+            echo "Invalid user type.";
     }
+    exit();
+} else {
+    echo "<script>alert('Invalid username or password');</script>";
+}
+
 
     $stmt->close();
   }
