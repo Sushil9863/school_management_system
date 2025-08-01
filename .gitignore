@@ -5,5 +5,3 @@
 .idea/
 forgot_password.php
 *.env
-composer.lock
-composer.json
