@@ -313,7 +313,7 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
             color: #2c3e50;
         }
 
-        form {
+        .form-exam {
             display: flex;
             justify-content: center;
             gap: 15px;
@@ -327,21 +327,21 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
         }
 
         select,
-        button {
+        .result-btn {
             padding: 8px 15px;
             font-size: 15px;
             border-radius: 6px;
             border: 1px solid #ccc;
         }
 
-        button {
+        .result-btn {
             background: #3498db;
             color: #fff;
             font-weight: bold;
             cursor: pointer;
         }
 
-        button:hover {
+        .result-btn:hover {
             background: #2980b9;
         }
 
@@ -396,7 +396,7 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
 <body>
     <div class="container">
         <h2>Student Results</h2>
-        <form method="GET">
+        <form class="form-exam" method="GET">
             <label>Exam:</label>
             <select name="exam_id" id="exam_id" required>
                 <option value="">-- Select Exam --</option>
@@ -452,7 +452,7 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                 <option value="grades" <?= $view_mode === 'grades' ? 'selected' : '' ?>>Grades</option>
                 <option value="consolidated" <?= $view_mode === 'consolidated' ? 'selected' : '' ?>>Consolidated</option>
             </select>
-            <button type="submit">Show Results</button>
+            <button class='result-btn' type="submit">Show Results</button>
         </form>
         <script>
             $(function () {

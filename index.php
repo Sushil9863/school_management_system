@@ -182,7 +182,7 @@
         case 'teacher':
             header("Location: teacher/teacher_dashboard.php");
             break;
-        case 'parents':
+        case 'parent':
             header("Location: parents/parents_dashboard.php");
             break;
         case 'accountant':

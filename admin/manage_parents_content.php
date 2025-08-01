@@ -1,29 +1,10 @@
 <?php
 require '../partials/dbconnect.php';
-require 'check_admin.php'; // Session check (sets $_SESSION['school_id'])
+require '../partials/algorithms.php';
+require 'check_admin.php'; 
 
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
-
-// Custom password hash (same as teachers/students)
-function custom_hash($password) {
-    $salt = 'XyZ@2025!abc123';
-    $rounds = 3;
-    $result = $password;
-    for ($r = 0; $r < $rounds; $r++) {
-        $temp = '';
-        for ($i = 0; $i < strlen($result); $i++) {
-            $char = ord($result[$i]);
-            $saltChar = ord($salt[$i % strlen($salt)]);
-            $mix = ($char ^ $saltChar) + ($char << 1);
-            $hex = dechex($mix);
-            $temp .= $hex;
-        }
-        $base64 = base64_encode($temp);
-        $result = substr($temp, 0, 16) . substr($base64, -16);
-    }
-    return strtoupper($result);
-}
 
 $school_id = $_SESSION['school_id'] ?? 0;
 
@@ -36,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $address = $_POST['address'];
         $email = $_POST['email'];
         $username = $_POST['username'];
-        $password = custom_hash($_POST['password']);
+        $password = custom_password_hash($_POST['password']);
 
         $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt1->bind_param("ssssssi", $full_name, $contact, $address, $email, $username, $password, $school_id);

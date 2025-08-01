@@ -1,6 +1,6 @@
 <?php
 require '../partials/dbconnect.php';
-require 'check_admin.php'; // admin session check & school_id set भैसकेको मानिन्छ
+require 'check_admin.php'; 
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
 
@@ -33,23 +33,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add') {
-        $full_name = $_POST['full_name'];
-        $address = $_POST['address'];
-        $phone = $_POST['phone'];
-        $email = $_POST['email'];
-        $username = $_POST['username'];
-        $password = custom_hash($_POST['password']);
+    $full_name = $_POST['full_name'];
+    $address = $_POST['address'];
+    $phone = $_POST['phone'];
+    $email = $_POST['email'];
+    $username = $_POST['username'];
+    $password = custom_hash($_POST['password']);
 
-        // Insert into teachers with school_id
-        $stmt1 = $conn->prepare("INSERT INTO teachers (full_name, address, phone, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt1->bind_param("ssssssi", $full_name, $address, $phone, $email, $username, $password, $school_id);
-        $stmt1->execute();
+    // Insert into users table first
+    $stmt2 = $conn->prepare("INSERT INTO users (school_id, username, type, password, email) VALUES (?, ?, 'teacher', ?, ?)");
+    $stmt2->bind_param("isss", $school_id, $username, $password, $email);
+    $stmt2->execute();
 
-        // Insert into users table
-        $stmt2 = $conn->prepare("INSERT INTO users (school_id, username, type, password, email) VALUES (?, ?, 'teacher', ?, ?)");
-        $stmt2->bind_param("isss",$school_id, $username, $password, $email);
-        $stmt2->execute();
-    }
+    $user_id = $conn->insert_id; // Get the inserted user ID
+
+    // Now insert into teachers table with user_id
+    $stmt1 = $conn->prepare("INSERT INTO teachers (user_id, full_name, address, phone, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt1->bind_param("issssssi", $user_id, $full_name, $address, $phone, $email, $username, $password, $school_id);
+    $stmt1->execute();
+}
+
 
     if ($action === 'edit') {
         $teacher_id = $_POST['teacher_id'];

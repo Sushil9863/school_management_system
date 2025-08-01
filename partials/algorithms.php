@@ -19,4 +19,15 @@ function custom_password_hash($password)
     return strtoupper($result);
 }
 
+
+function generate_otp()
+{
+    $otp = '';
+    $seed = random_int(100000, 999999);
+    for ($i = 0; $i < 6; $i++) {
+        $otp .= ($seed * ($i + 1) + random_int(0, 9)) % 10;
+        $seed += random_int(10, 99);
+    }
+    return $otp;
+}
 ?>
