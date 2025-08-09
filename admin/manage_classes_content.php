@@ -177,18 +177,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_class'])) {
   if ($result->num_rows === 0)
     die("Invalid class teacher.");
   $teacher = $result->fetch_assoc();
-  $class_teacher = $teacher['full_name'];
+  // $class_teacher = $teacher['full_name'];
 
   // Check if teacher is already assigned to another class
-  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE class_teacher = ? AND school_id = ?");
-  $stmtCheck->bind_param("si", $class_teacher, $school_id);
+  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE class_teacher_id = ? AND school_id = ?");
+  $stmtCheck->bind_param("ii", $teacher_id, $school_id);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows > 0) {
     die("This teacher is already assigned as class teacher to another class.");
   }
 
-  $stmt = $conn->prepare("INSERT INTO classes (grade, section, type, class_teacher, school_id) VALUES (?, ?, ?, ?, ?)");
-  $stmt->bind_param("ssssi", $grade, $section, $class_type, $class_teacher, $school_id);
+  $stmt = $conn->prepare("INSERT INTO classes (grade, section, type, class_teacher_id, school_id) VALUES (?, ?, ?, ?, ?)");
+  $stmt->bind_param("ssssi", $grade, $section, $class_type, $teacher_id, $school_id);
   $stmt->execute();
 
   $class_id = $conn->insert_id;
@@ -431,9 +431,9 @@ if ($selected_class_id) {
     </div>
 
     <div id="subjects" class="tab-content mt-6 hidden">
+      <button onclick="document.getElementById('addSubjectModal').classList.remove('hidden')"
+        class="mb-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">+ Add Subject</button>
       <?php if ($subjects && $subjects->num_rows > 0): ?>
-        <button onclick="document.getElementById('addSubjectModal').classList.remove('hidden')"
-          class="mb-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">+ Add Subject</button>
         <table class="w-full border border-gray-300 rounded-md">
           <thead class="bg-gray-200">
             <tr>
@@ -543,14 +543,16 @@ if ($selected_class_id) {
             <?php
             $teacher_result->data_seek(0);
             while ($teacher = $teacher_result->fetch_assoc()):
-              // Skip teachers already assigned as class teachers
-              if (!in_array($teacher['full_name'], $assigned_teachers)):
+              // Show only teachers not assigned as class teachers
+              if (!in_array($teacher['id'], $assigned_teachers)):
                 ?>
                 <option value="<?= $teacher['id'] ?>"><?= htmlspecialchars($teacher['full_name']) ?></option>
                 <?php
               endif;
-            endwhile; ?>
+            endwhile;
+            ?>
           </select>
+
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')"

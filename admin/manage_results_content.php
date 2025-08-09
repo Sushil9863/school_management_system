@@ -54,6 +54,52 @@ function getGradeAndGPA($percent)
     return ['NG', 0.0];
 }
 
+// Table rendering function - used both in page and export
+function renderResultsTable($results, $subjects, $view_mode) {
+    echo "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse: collapse; width: 100%;'>";
+    echo "<thead style='background: #007BFF; color: white;'>";
+    echo "<tr>";
+    echo "<th style='text-align:center;'>No.</th><th>Name</th><th>Section</th>";
+    foreach ($subjects as $subject) {
+        echo "<th>" . htmlspecialchars($subject) . "</th>";
+    }
+    echo "<th>Total</th><th>Percent</th><th>Grade</th><th>GPA</th><th>Result</th>";
+    echo "</tr></thead><tbody>";
+
+    $i = 1;
+    foreach ($results as $student_id => $st) {
+        $resultClass = strtolower($st['result']) === 'pass' ? 'pass' : 'fail';
+        echo "<tr style='background: " . ($i % 2 === 0 ? '#f9f9f9' : 'white') . "'>";
+        echo "<td style='text-align:center;'>" . $i++ . "</td>";
+        echo "<td>" . htmlspecialchars($st['full_name']) . "</td>";
+        echo "<td>" . htmlspecialchars($st['section']) . "</td>";
+        foreach ($subjects as $subject) {
+            $mark = $st['marks'][$subject] ?? 0;
+            $full = $st['subject_full'][$subject] ?? 0;
+            $passMark = $st['subject_pass'][$subject] ?? 0;
+            $fail_mark_class = ($mark < $passMark) ? "fail-mark" : "";
+            echo "<td class='{$fail_mark_class}' style='text-align:center;'>";
+            if ($view_mode === 'grades') {
+                $percent = $full ? ($mark / $full) * 100 : 0;
+                [$letter,] = getGradeAndGPA($percent);
+                echo $letter;
+            } elseif ($view_mode === 'consolidated') {
+                echo sprintf("%.2f/%d", $mark, $full);
+            } else {
+                echo sprintf("%.2f", $mark);
+            }
+            echo "</td>";
+        }
+        echo "<td style='text-align:center;'>" . $st['total'] . "</td>";
+        echo "<td style='text-align:center;'>" . $st['percent'] . "%</td>";
+        echo "<td style='text-align:center;'>" . $st['letter'] . "</td>";
+        echo "<td style='text-align:center;'>" . $st['gpa'] . "</td>";
+        echo "<td class='{$resultClass}' style='text-align:center;font-weight:bold;'>" . $st['result'] . "</td>";
+        echo "</tr>";
+    }
+    echo "</tbody></table>";
+}
+
 $view_mode = $_GET['view_mode'] ?? 'marks';
 $results = [];
 $subjects = [];       // Final array of unique subject names (for table header)
@@ -283,112 +329,169 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
         }
     }
 }
+
+if (isset($_GET['export']) && $_GET['export'] == '1') {
+    // Export only table part, no extra HTML
+    if (empty($results) || empty($subjects)) {
+        die("No data available for export.");
+    }
+
+    header("Content-Type: application/vnd.ms-excel");
+    header("Content-Disposition: attachment; filename=results_" . date('Ymd_His') . ".xls");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+
+    renderResultsTable($results, $subjects, $view_mode);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8" />
     <title>Manage Results</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
     <style>
+        /* Basic page styling */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f4f6f9;
+            background: #f0f4f8;
             margin: 0;
-            padding: 0;
+            /* padding: 20px; */
+            color: #333;
         }
 
         .container {
-            max-width: 95%;
-            margin: 30px auto;
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            max-width: 1200px;
+            margin: auto;
+            background: white;
+            padding: 20px 30px 40px;
+            border-radius: 8px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
         }
 
         h2 {
-            text-align: center;
-            color: #2c3e50;
-        }
-
-        .form-exam {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
+            color: #007BFF;
             margin-bottom: 20px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        form.form-exam {
+            display: flex;
             flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            justify-content: center;
         }
 
-        label {
+        form label {
             font-weight: 600;
-            align-self: center;
+            margin-bottom: 6px;
+            display: block;
+            color: #444;
         }
 
-        select,
-        .result-btn {
-            padding: 8px 15px;
-            font-size: 15px;
+        form select {
+            padding: 8px 12px;
             border-radius: 6px;
-            border: 1px solid #ccc;
+            border: 1.8px solid #ccc;
+            min-width: 160px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            background: white;
+            appearance: none;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="gray" height="12" viewBox="0 0 24 24" width="12" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 12px;
+        }
+
+        form select:focus {
+            outline: none;
+            border-color: #007BFF;
+            box-shadow: 0 0 6px #007BFFaa;
+            background-color: #fff;
         }
 
         .result-btn {
-            background: #3498db;
-            color: #fff;
-            font-weight: bold;
+            background: #007BFF;
+            border: none;
+            padding: 10px 18px;
+            color: white;
+            font-weight: 600;
+            border-radius: 6px;
             cursor: pointer;
+            transition: background-color 0.25s ease;
+            min-width: 140px;
+            box-shadow: 0 2px 8px #007BFFaa;
+            user-select: none;
         }
 
         .result-btn:hover {
-            background: #2980b9;
+            background: #0056b3;
+            box-shadow: 0 4px 12px #0056b3bb;
         }
 
-        .table-wrapper {
-            overflow-x: auto;
-        }
-
+        /* Table styles */
         table {
             width: 100%;
-            min-width: 900px;
             border-collapse: collapse;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        thead tr {
+            background-color: #007BFF;
+            color: #fff;
+            font-weight: 700;
         }
 
         th,
         td {
-            padding: 10px;
-            text-align: center;
-            border-bottom: 1px solid #eaeaea;
+            border: 1px solid #ddd;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: middle;
         }
 
-        th {
-            background: #3498db;
-            color: #fff;
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
         }
 
-        td.pass {
-            color: #27ae60;
-            font-weight: bold;
-        }
-
-        td.fail {
-            color: #e74c3c;
-            font-weight: bold;
+        tbody tr:hover {
+            background-color: #e6f2ff;
         }
 
         .fail-mark {
-            color: #e74c3c;
-            font-weight: bold;
+            background-color: #fddede;
+            color: #a40000;
+            font-weight: 600;
+            text-align: center;
         }
 
-        .hidden {
-            display: none;
+        .pass {
+            color: #007B00;
         }
 
-        .final-result {
-            background-color: #f8f9fa;
-            font-weight: bold;
+        .fail {
+            color: #b00000;
+        }
+
+        /* Responsive tweaks */
+        @media (max-width: 900px) {
+            form.form-exam {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            form select, .result-btn {
+                min-width: 250px;
+            }
         }
     </style>
 </head>
@@ -397,63 +500,79 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
     <div class="container">
         <h2>Student Results</h2>
         <form class="form-exam" method="GET">
-            <label>Exam:</label>
-            <select name="exam_id" id="exam_id" required>
-                <option value="">-- Select Exam --</option>
-                <?php foreach ($exams as $exam): ?>
-                    <option value="<?= $exam['id'] ?>" <?= isset($_GET['exam_id']) && $_GET['exam_id'] == $exam['id'] ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($exam['exam_name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <label>Class:</label>
-            <select name="class_id" id="class_id" required>
-                <option value="">-- Select Class --</option>
-                <?php foreach ($groupedClasses as $grade => $class): ?>
-                    <option value="<?= $class['class_id'] ?>"
-                        data-sections="<?= htmlspecialchars(implode(',', $class['sections'])) ?>"
-                        <?= isset($_GET['class_id']) && $_GET['class_id'] == $class['class_id'] ? 'selected' : '' ?>>
-                        Grade <?= htmlspecialchars($grade) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <label>Section:</label>
-            <select name="section" id="section_id">
-                <option value="all">All Sections</option>
-                <?php
-                if (isset($_GET['class_id'])) {
-                    $selectedClassId = $_GET['class_id'];
-                    $selectedClass = null;
-                    foreach ($classes as $class) {
-                        if ($class['class_id'] == $selectedClassId) {
-                            $selectedClass = $class;
-                            break;
+            <div>
+                <label for="exam_id">Exam:</label>
+                <select name="exam_id" id="exam_id" required>
+                    <option value="">-- Select Exam --</option>
+                    <?php foreach ($exams as $exam): ?>
+                        <option value="<?= $exam['id'] ?>" <?= isset($_GET['exam_id']) && $_GET['exam_id'] == $exam['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($exam['exam_name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div>
+                <label for="class_id">Class:</label>
+                <select name="class_id" id="class_id" required>
+                    <option value="">-- Select Class --</option>
+                    <?php foreach ($groupedClasses as $grade => $class): ?>
+                        <option value="<?= $class['class_id'] ?>"
+                            data-sections="<?= htmlspecialchars(implode(',', $class['sections'])) ?>"
+                            <?= isset($_GET['class_id']) && $_GET['class_id'] == $class['class_id'] ? 'selected' : '' ?>>
+                            Grade <?= htmlspecialchars($grade) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div>
+                <label for="section_id">Section:</label>
+                <select name="section" id="section_id">
+                    <option value="all">All Sections</option>
+                    <?php
+                    if (isset($_GET['class_id'])) {
+                        $selectedClassId = $_GET['class_id'];
+                        $selectedClass = null;
+                        foreach ($classes as $class) {
+                            if ($class['class_id'] == $selectedClassId) {
+                                $selectedClass = $class;
+                                break;
+                            }
+                        }
+                        if ($selectedClass) {
+                            $sections = $conn->query("
+                            SELECT DISTINCT section 
+                            FROM classes 
+                            WHERE grade = '" . $conn->real_escape_string($selectedClass['grade']) . "' 
+                            AND school_id = $school_id
+                            ORDER BY section
+                        ");
+                            while ($sec = $sections->fetch_assoc()) {
+                                $selected = ($_GET['section'] ?? '') == $sec['section'] ? 'selected' : '';
+                                echo "<option value='" . htmlspecialchars($sec['section']) . "' $selected>" . htmlspecialchars($sec['section']) . "</option>";
+                            }
                         }
                     }
-                    if ($selectedClass) {
-                        $sections = $conn->query("
-                        SELECT DISTINCT section 
-                        FROM classes 
-                        WHERE grade = '" . $conn->real_escape_string($selectedClass['grade']) . "' 
-                        AND school_id = $school_id
-                        ORDER BY section
-                    ");
-                        while ($sec = $sections->fetch_assoc()) {
-                            $selected = ($_GET['section'] ?? '') == $sec['section'] ? 'selected' : '';
-                            echo "<option value='" . htmlspecialchars($sec['section']) . "' $selected>" . htmlspecialchars($sec['section']) . "</option>";
-                        }
-                    }
-                }
-                ?>
-            </select>
-            <label>View Mode:</label>
-            <select name="view_mode" id="view_mode" required>
-                <option value="marks" <?= $view_mode === 'marks' ? 'selected' : '' ?>>Marks</option>
-                <option value="grades" <?= $view_mode === 'grades' ? 'selected' : '' ?>>Grades</option>
-                <option value="consolidated" <?= $view_mode === 'consolidated' ? 'selected' : '' ?>>Consolidated</option>
-            </select>
-            <button class='result-btn' type="submit">Show Results</button>
+                    ?>
+                </select>
+            </div>
+
+            <div>
+                <label for="view_mode">View Mode:</label>
+                <select name="view_mode" id="view_mode" required>
+                    <option value="marks" <?= $view_mode === 'marks' ? 'selected' : '' ?>>Marks</option>
+                    <option value="grades" <?= $view_mode === 'grades' ? 'selected' : '' ?>>Grades</option>
+                    <option value="consolidated" <?= $view_mode === 'consolidated' ? 'selected' : '' ?>>Consolidated</option>
+                </select>
+            </div>
+
+            <div style="align-self: flex-end; display:flex; gap: 10px;">
+                <button class="result-btn" type="submit">Show Results</button>
+                <button class="result-btn" type="submit" name="export" value="1">Export to Excel</button>
+            </div>
         </form>
+
         <script>
             $(function () {
                 function populateSections() {
@@ -473,62 +592,10 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                 populateSections();
             });
         </script>
+
         <div class="table-wrapper">
             <?php if (!empty($results) && !empty($subjects)): ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>No.</th>
-                            <th>Name</th>
-                            <th>Section</th>
-                            <?php foreach ($subjects as $subject): ?>
-                                <th><?= htmlspecialchars($subject) ?></th>
-                            <?php endforeach; ?>
-                            <th>Total</th>
-                            <th>Percent</th>
-                            <th>Grade</th>
-                            <th>GPA</th>
-                            <th>Result</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $i = 1;
-                        foreach ($results as $student_id => $st):
-                            ?>
-                            <tr>
-                                <td><?= $i++ ?></td>
-                                <td><?= htmlspecialchars($st['full_name']) ?></td>
-                                <td><?= htmlspecialchars($st['section']) ?></td>
-                                <?php foreach ($subjects as $subject):
-                                    $mark = $st['marks'][$subject] ?? 0;
-                                    $full = $st['subject_full'][$subject] ?? 0;
-                                    $pass = $st['subject_pass'][$subject] ?? 0;
-                                    $fail_class = ($mark < $pass) ? 'fail-mark' : '';
-                                    ?>
-                                    <td class="<?= $fail_class ?>">
-                                        <?php
-                                        if ($view_mode === 'grades') {
-                                            $percent = $full ? ($mark / $full) * 100 : 0;
-                                            [$letter,] = getGradeAndGPA($percent);
-                                            echo $letter;
-                                        } elseif ($view_mode === 'consolidated') {
-                                            echo sprintf("%.2f/%d", $mark, $full);
-                                        } else {
-                                            echo sprintf("%.2f", $mark);
-                                        }
-                                        ?>
-                                    </td>
-                                <?php endforeach; ?>
-                                <td><?= $st['total'] ?></td>
-                                <td><?= $st['percent'] ?>%</td>
-                                <td><?= $st['letter'] ?></td>
-                                <td><?= $st['gpa'] ?></td>
-                                <td class="<?= $st['result'] === 'Pass' ? 'pass' : 'fail' ?>"><?= $st['result'] ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <?php renderResultsTable($results, $subjects, $view_mode); ?>
             <?php elseif (isset($_GET['exam_id'])): ?>
                 <p>No results found for the selected exam/class/section.</p>
             <?php endif; ?>

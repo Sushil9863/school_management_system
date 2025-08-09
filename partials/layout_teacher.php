@@ -16,6 +16,9 @@ include_once 'config.php';
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
+    body{
+    background: linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%);
+  }
     /* Reusable modal box styling */
     .modalBox {
       @apply glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl transition duration-300 ease-in-out hover:ring-4 hover:ring-blue-400 hover:ring-offset-2 hover:shadow-[0_0_30px_rgba(59, 130, 246, 0.6)] filter hover:brightness-110;

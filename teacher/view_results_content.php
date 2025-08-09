@@ -269,82 +269,199 @@ if (isset($_GET['exam_id'])) {
 }
 
 ?>
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8" />
     <title>Class Teacher Results</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
+        /* Reset & base */
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f4f6f9;
+            background: linear-gradient(135deg, #e0e7ff 0%, #f0f4ff 100%);
             margin: 0;
             padding: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            /* padding: 40px 20px; */
+            color: #344054;
         }
         .container {
-            max-width: 95%;
-            margin: 30px auto;
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            max-width: 1100px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow:
+                0 1px 3px rgba(0,0,0,0.12),
+                0 4px 6px rgba(0,0,0,0.06);
+            padding: 30px 40px 40px;
         }
         h2 {
             text-align: center;
-            color: #2c3e50;
+            color: #334155;
+            margin-bottom: 35px;
+            font-weight: 700;
+            font-size: 2.1rem;
         }
-        form {
+
+        /* Form styling */
+        form.form-exam {
             display: flex;
             justify-content: center;
-            gap: 15px;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            gap: 20px 30px;
+            margin-bottom: 35px;
         }
         label {
             font-weight: 600;
-            margin-right: 5px;
-        }
-        select, button {
-            padding: 5px 10px;
             font-size: 1rem;
+            align-self: center;
+            color: #475569;
+            white-space: nowrap;
+        }
+        select {
+            min-width: 180px;
+            padding: 10px 15px;
+            font-size: 1rem;
+            border-radius: 10px;
+            border: 1.8px solid #cbd5e1;
+            background: #f9fafb;
+            transition: all 0.25s ease;
+            color: #334155;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            cursor: pointer;
+            appearance: none;
+            background-image:
+              linear-gradient(45deg, transparent 50%, #64748b 50%),
+              linear-gradient(135deg, #64748b 50%, transparent 50%),
+              linear-gradient(to right, #cbd5e1, #cbd5e1);
+            background-position:
+              calc(100% - 20px) calc(1em + 2px),
+              calc(100% - 15px) calc(1em + 2px),
+              calc(100% - 25px) 0.5em;
+            background-size: 5px 5px, 5px 5px, 1px 1.5em;
+            background-repeat: no-repeat;
+        }
+        select:hover, select:focus {
+            border-color: #2563eb;
+            background: #e0e7ff;
+            outline: none;
+            box-shadow: 0 0 6px #2563ebaa;
+            color: #1e40af;
         }
         button.result-btn {
-            background-color: #2980b9;
+            background-color: #2563eb;
             border: none;
             color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 12px;
+            padding: 12px 28px;
+            box-shadow: 0 4px 10px #2563ebaa;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease;
+            align-self: center;
+            user-select: none;
         }
         button.result-btn:hover {
-            background-color: #3498db;
+            background-color: #1e40af;
+            box-shadow: 0 6px 16px #1e40afcc;
+            transform: translateY(-2px);
+        }
+        button.result-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 7px #1e40afbb;
+        }
+
+        /* Table styling */
+        .table-wrapper {
+            overflow-x: auto;
+            box-shadow:
+                0 8px 24px rgba(0,0,0,0.12);
+            border-radius: 14px;
+            border: 1.5px solid #e2e8f0;
+            background: #fff;
         }
         table {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 700px;
         }
-        th, td {
-            border: 1px solid #ddd;
+        thead tr th {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #f9fafb;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 14px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            font-size: 0.9rem;
+            user-select: none;
+            border-right: 1px solid #60a5fa;
+        }
+        thead tr th:last-child {
+            border-right: none;
+        }
+        tbody tr td {
+            padding: 12px 14px;
+            font-size: 0.95rem;
+            color: #475569;
+            border-bottom: 1px solid #e2e8f0;
             text-align: center;
-            padding: 8px;
         }
-        th {
-            background-color: #2980b9;
-            color: white;
+        tbody tr:nth-child(even) td {
+            background: #f9fafb;
         }
+        tbody tr:hover td {
+            background: #eff6ff;
+            color: #1e40af;
+            font-weight: 600;
+        }
+
+        /* Fail/Pass colors */
         .fail-mark {
-            background-color: #f8d7da;
-            color: #721c24;
-            font-weight: bold;
+            background-color: #fee2e2 !important;
+            color: #b91c1c !important;
+            font-weight: 700;
+            border-radius: 6px;
         }
         .pass {
-            color: green;
-            font-weight: 600;
+            color: #15803d;
+            font-weight: 700;
         }
         .fail {
-            color: red;
-            font-weight: 600;
+            color: #b91c1c;
+            font-weight: 700;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 900px) {
+            form.form-exam {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+            select, button.result-btn {
+                width: 100%;
+                max-width: 320px;
+            }
+        }
+        @media (max-width: 500px) {
+            table {
+                min-width: 600px;
+            }
+            thead tr th, tbody tr td {
+                padding: 10px 8px;
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
@@ -352,7 +469,7 @@ if (isset($_GET['exam_id'])) {
     <div class="container">
         <h2>Results for Grade <?= htmlspecialchars($grade) ?> Section <?= htmlspecialchars($section) ?></h2>
         <form method="GET" class="form-exam" style="justify-content:center;">
-            <label>Exam:</label>
+            <label for="exam_id">Exam:</label>
             <select name="exam_id" id="exam_id" required>
                 <option value="">-- Select Exam --</option>
                 <?php foreach ($exams as $exam): ?>
@@ -361,16 +478,18 @@ if (isset($_GET['exam_id'])) {
                     </option>
                 <?php endforeach; ?>
             </select>
-            <label>View Mode:</label>
+
+            <label for="view_mode">View Mode:</label>
             <select name="view_mode" id="view_mode" required>
                 <option value="marks" <?= $view_mode === 'marks' ? 'selected' : '' ?>>Marks</option>
                 <option value="grades" <?= $view_mode === 'grades' ? 'selected' : '' ?>>Grades</option>
                 <option value="consolidated" <?= $view_mode === 'consolidated' ? 'selected' : '' ?>>Consolidated</option>
             </select>
-            <button class="result-btn" type="submit">Show Results</button>
+
+            <button class="result-btn" type="submit" aria-label="Show Results">Show Results</button>
         </form>
 
-        <div class="table-wrapper">
+        <div class="table-wrapper" role="region" aria-live="polite" aria-relevant="additions">
             <?php if (!empty($results) && !empty($subjects)): ?>
                 <table>
                     <thead>
@@ -427,9 +546,12 @@ if (isset($_GET['exam_id'])) {
                     </tbody>
                 </table>
             <?php elseif (isset($_GET['exam_id'])): ?>
-                <p>No results found for the selected exam.</p>
+                <p style="text-align:center; font-weight:600; color:#64748b; margin-top: 30px;">
+                    No results found for the selected exam.
+                </p>
             <?php endif; ?>
         </div>
     </div>
 </body>
 </html>
+
