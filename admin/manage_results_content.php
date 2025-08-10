@@ -1067,5 +1067,4 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
         </div>
     </div>
 </body>
-
 </html>
