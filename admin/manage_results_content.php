@@ -1,5 +1,8 @@
 <?php
 include '../partials/dbconnect.php';
+require '../vendor/autoload.php';
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 $school_id = $_SESSION['school_id'] ?? 1;
 
@@ -42,16 +45,15 @@ foreach ($classes as $class) {
 }
 
 // Grade/GPA function
-function getGradeAndGPA($percent)
-{
+function getGradeAndGPA($percent, $isPass = true) {
+    if (!$isPass || $percent < 35) return ['NG', 0.0];
     if ($percent >= 90) return ['A+', 4.0];
     if ($percent >= 80) return ['A', 3.6];
     if ($percent >= 70) return ['B+', 3.2];
     if ($percent >= 60) return ['B', 2.8];
     if ($percent >= 50) return ['C+', 2.4];
     if ($percent >= 40) return ['C', 2.0];
-    if ($percent >= 35) return ['D', 1.6];
-    return ['NG', 0.0];
+    return ['D', 1.6];
 }
 
 // Table rendering function - used both in page and export
@@ -63,7 +65,18 @@ function renderResultsTable($results, $subjects, $view_mode) {
     foreach ($subjects as $subject) {
         echo "<th>" . htmlspecialchars($subject) . "</th>";
     }
-    echo "<th>Total</th><th>Percent</th><th>Grade</th><th>GPA</th><th>Result</th>";
+    
+    // Show columns based on view mode
+    if ($view_mode !== 'grades') {
+        echo "<th>Total</th><th>Percent</th>";
+    }
+    if ($view_mode !== 'marks') {
+        echo "<th>Grade</th><th>GPA</th>";
+    }
+    if ($view_mode === 'marks') {
+        echo "<th>Result</th>";
+    }
+    
     echo "</tr></thead><tbody>";
 
     $i = 1;
@@ -73,28 +86,43 @@ function renderResultsTable($results, $subjects, $view_mode) {
         echo "<td style='text-align:center;'>" . $i++ . "</td>";
         echo "<td>" . htmlspecialchars($st['full_name']) . "</td>";
         echo "<td>" . htmlspecialchars($st['section']) . "</td>";
+        
         foreach ($subjects as $subject) {
             $mark = $st['marks'][$subject] ?? 0;
             $full = $st['subject_full'][$subject] ?? 0;
             $passMark = $st['subject_pass'][$subject] ?? 0;
             $fail_mark_class = ($mark < $passMark) ? "fail-mark" : "";
             echo "<td class='{$fail_mark_class}' style='text-align:center;'>";
+            
             if ($view_mode === 'grades') {
-                $percent = $full ? ($mark / $full) * 100 : 0;
-                [$letter,] = getGradeAndGPA($percent);
-                echo $letter;
-            } elseif ($view_mode === 'consolidated') {
-                echo sprintf("%.2f/%d", $mark, $full);
-            } else {
+    $percent = $full ? ($mark / $full) * 100 : 0;
+    $subjectPassed = ($mark >= $passMark);
+    [$letter,] = getGradeAndGPA($percent, $subjectPassed);
+    echo $letter;
+} elseif ($view_mode === 'consolidated') {
+    $percent = $full ? ($mark / $full) * 100 : 0;
+    $subjectPassed = ($mark >= $passMark);
+    [$letter,] = getGradeAndGPA($percent, $subjectPassed);
+    echo sprintf("%.2f (%s)", $mark, $letter);
+} else {
                 echo sprintf("%.2f", $mark);
             }
             echo "</td>";
         }
-        echo "<td style='text-align:center;'>" . $st['total'] . "</td>";
-        echo "<td style='text-align:center;'>" . $st['percent'] . "%</td>";
-        echo "<td style='text-align:center;'>" . $st['letter'] . "</td>";
-        echo "<td style='text-align:center;'>" . $st['gpa'] . "</td>";
-        echo "<td class='{$resultClass}' style='text-align:center;font-weight:bold;'>" . $st['result'] . "</td>";
+        
+        // Show columns based on view mode
+        if ($view_mode !== 'grades') {
+            echo "<td style='text-align:center;'>" . $st['total'] . "</td>";
+            echo "<td style='text-align:center;'>" . $st['percent'] . "%</td>";
+        }
+        if ($view_mode !== 'marks') {
+            echo "<td style='text-align:center;'>" . $st['letter'] . "</td>";
+            echo "<td style='text-align:center;'>" . $st['gpa'] . "</td>";
+        }
+        if ($view_mode === 'marks') {
+            echo "<td class='{$resultClass}' style='text-align:center;font-weight:bold;'>" . $st['result'] . "</td>";
+        }
+        
         echo "</tr>";
     }
     echo "</tbody></table>";
@@ -288,12 +316,299 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                 }
 
                 // ---------- CALCULATE TOTALS ----------
+foreach ($results as &$st) {
+    $totalMarks = 0;
+    $totalFull = 0;
+    $pass = true;
+    $totalGPA = 0;
+    $subjectCount = 0;
+    $hasNG = false;
+
+    foreach ($st['marks'] as $sub => $mark) {
+        $full = $st['subject_full'][$sub] ?? 0;
+        $passMark = $st['subject_pass'][$sub] ?? 0;
+
+        $totalMarks += $mark;
+        $totalFull += $full;
+
+        $subjectPassed = ($mark >= $passMark);
+        if (!$subjectPassed) {
+            $pass = false;
+            $hasNG = true;
+        }
+
+        $percent = $full ? ($mark / $full) * 100 : 0;
+        [$letter, $gpa] = getGradeAndGPA($percent, $subjectPassed);
+        $totalGPA += $gpa;
+        $subjectCount++;
+    }
+
+    $st['total'] = round($totalMarks, 2);
+    $st['percent'] = $totalFull ? round(($totalMarks / $totalFull) * 100, 2) : 0;
+    $st['result'] = ($view_mode === 'grades') ? '-' : ($pass ? 'Pass' : 'Fail');
+    
+    // Handle NG condition for grade and consolidated views
+    if (($view_mode === 'grades' || $view_mode === 'consolidated') && $hasNG) {
+        $st['letter'] = 'NG';
+        $st['gpa'] = 0.0;
+    } else {
+        [$letter, ] = getGradeAndGPA($st['percent'], $pass);
+        $st['letter'] = $letter;
+        $st['gpa'] = $subjectCount ? round($totalGPA / $subjectCount, 2) : 0;
+    }
+}
+unset($st);
+
+                // ---------- SORT RESULTS ----------
+                // Separate passed and failed students
+                $passedStudents = [];
+                $failedStudents = [];
+                
+                foreach ($results as $student_id => $student) {
+                    if (strtolower($student['result']) === 'pass') {
+                        $passedStudents[$student_id] = $student;
+                    } else {
+                        $failedStudents[$student_id] = $student;
+                    }
+                }
+
+                // Sort passed students
+                if ($view_mode === 'grades') {
+                    uasort($passedStudents, function($a, $b) {
+                        // First by GPA (descending)
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        if ($gpaCompare !== 0) return $gpaCompare;
+                        
+                        // If GPA is same, then by percentage (descending)
+                        return $b['percent'] <=> $a['percent'];
+                    });
+                } 
+                elseif ($view_mode === 'consolidated') {
+                    uasort($passedStudents, function($a, $b) {
+                        // First by GPA (descending)
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        if ($gpaCompare !== 0) return $gpaCompare;
+                        
+                        // If GPA is same, then by percentage (descending)
+                        return $b['percent'] <=> $a['percent'];
+                    });
+                } 
+                else { // marks view
+                    uasort($passedStudents, fn($a, $b) => $b['percent'] <=> $a['percent']);
+                }
+
+                // Sort failed students (same logic as passed but they'll appear after)
+                if ($view_mode === 'grades') {
+                    uasort($failedStudents, function($a, $b) {
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        if ($gpaCompare !== 0) return $gpaCompare;
+                        return $b['percent'] <=> $a['percent'];
+                    });
+                } 
+                elseif ($view_mode === 'consolidated') {
+                    uasort($failedStudents, function($a, $b) {
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        if ($gpaCompare !== 0) return $gpaCompare;
+                        return $b['percent'] <=> $a['percent'];
+                    });
+                } 
+                else { // marks view
+                    uasort($failedStudents, fn($a, $b) => $b['percent'] <=> $a['percent']);
+                }
+
+                // Combine results with passed students first
+                $results = $passedStudents + $failedStudents;
+            }
+        }
+    }
+}
+
+if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
+    // Check if required parameters are present
+    if (!isset($_GET['exam_id']) || !isset($_GET['class_id'])) {
+        die("Required parameters missing for PDF export.");
+    }
+
+    // Reinitialize parameters from GET
+    $view_mode = $_GET['view_mode'] ?? 'marks';
+    $exam_id = $_GET['exam_id'];
+    $class_id = intval($_GET['class_id']);
+    $section = $_GET['section'] ?? 'all';
+    $school_id = $_SESSION['school_id'] ?? 1;
+
+    // Initialize variables
+    $results = [];
+    $subjects = [];
+    $subjectsById = [];
+    $marksInfo = [];
+
+    // Get grade from class_id
+    $gradeRow = $conn->query("SELECT grade FROM classes WHERE id = $class_id AND school_id = $school_id")->fetch_assoc();
+    $grade = $gradeRow ? $gradeRow['grade'] : null;
+
+    if ($grade) {
+        $classIds = [];
+        $res = $conn->query("
+            SELECT id FROM classes 
+            WHERE grade = '" . $conn->real_escape_string($grade) . "' 
+            AND school_id = $school_id
+        ");
+        while ($c = $res->fetch_assoc()) $classIds[] = $c['id'];
+
+        if (!empty($classIds)) {
+            $classIdList = implode(',', $classIds);
+
+            $sectionFilter = ($section !== 'all') ? "AND c.section = '" . $conn->real_escape_string($section) . "'" : "";
+            $studentsRes = $conn->query("
+                SELECT st.id, st.full_name, c.grade, c.section
+                FROM students st
+                JOIN classes c ON st.class_id = c.id
+                WHERE c.id IN ($classIdList) AND c.school_id = $school_id $sectionFilter
+                ORDER BY st.full_name
+            ");
+            $studentIds = [];
+            while ($st = $studentsRes->fetch_assoc()) {
+                $studentIds[] = $st['id'];
+                $results[$st['id']] = [
+                    'full_name' => $st['full_name'],
+                    'grade' => $st['grade'],
+                    'section' => $st['section'],
+                    'marks' => [],
+                    'subject_full' => [],
+                    'subject_pass' => [],
+                    'total' => 0,
+                    'percent' => 0,
+                    'result' => 'Fail',
+                    'letter' => 'NG',
+                    'gpa' => 0.0,
+                    'exam_count' => []
+                ];
+            }
+
+            if (!empty($studentIds)) {
+                $ids = implode(',', $studentIds);
+
+                // Handle Final Exam (Average of Terminal Exams)
+                if ($exam_id === '0') {
+                    $terminalExams = [];
+                    $examRes = $conn->query("
+                        SELECT id FROM exams
+                        WHERE school_id = $school_id
+                        AND exam_type = 'Terminal'
+                    ");
+                    while ($exam = $examRes->fetch_assoc()) $terminalExams[] = $exam['id'];
+
+                    if (!empty($terminalExams)) {
+                        $finalFullMarks = [];
+                        $finalPassMarks = [];
+
+                        // Fetch subjects
+                        $subRes = $conn->query("
+                            SELECT id, name FROM subjects
+                            WHERE class_id IN ($classIdList)
+                            ORDER BY name
+                        ");
+                        while ($sub = $subRes->fetch_assoc()) {
+                            $subjectsById[$sub['id']] = $sub['name'];
+                            if (!in_array($sub['name'], $subjects)) $subjects[] = $sub['name'];
+                        }
+
+                        $allSubIdsStr = implode(',', array_keys($subjectsById));
+
+                        // Fetch full/pass marks
+                        foreach ($terminalExams as $terminalExamId) {
+                            $fullMarksRes = $conn->query("
+                                SELECT subject_id, full_marks, pass_marks
+                                FROM exam_subjects es
+                                JOIN subjects s ON es.subject_id = s.id
+                                WHERE es.exam_id = $terminalExamId
+                                AND s.class_id IN ($classIdList)
+                                AND subject_id IN ($allSubIdsStr)
+                            ");
+                            while ($row = $fullMarksRes->fetch_assoc()) {
+                                $finalFullMarks[$row['subject_id']] = floatval($row['full_marks']);
+                                $finalPassMarks[$row['subject_id']] = floatval($row['pass_marks']);
+                            }
+                        }
+
+                        // Fetch marks
+                        foreach ($terminalExams as $terminalExamId) {
+                            $marksRes = $conn->query("
+                                SELECT student_id, subject_id, marks
+                                FROM marks
+                                WHERE exam_id = $terminalExamId
+                                AND student_id IN ($ids)
+                                AND subject_id IN ($allSubIdsStr)
+                            ");
+                            while ($m = $marksRes->fetch_assoc()) {
+                                $subjectName = $subjectsById[$m['subject_id']] ?? 'Unknown';
+                                $results[$m['student_id']]['marks'][$subjectName] = ($results[$m['student_id']]['marks'][$subjectName] ?? 0) + (float)$m['marks'];
+                                $results[$m['student_id']]['subject_full'][$subjectName] = $finalFullMarks[$m['subject_id']] ?? 0;
+                                $results[$m['student_id']]['subject_pass'][$subjectName] = $finalPassMarks[$m['subject_id']] ?? 0;
+                                $results[$m['student_id']]['exam_count'][$subjectName] = ($results[$m['student_id']]['exam_count'][$subjectName] ?? 0) + 1;
+                            }
+                        }
+
+                        // Calculate averages
+                        foreach ($results as &$st) {
+                            foreach ($st['marks'] as $subject => &$mark) {
+                                $count = $st['exam_count'][$subject] ?? 1;
+                                $mark = $count ? $mark / $count : $mark;
+                            }
+                            unset($mark);
+                        }
+                        unset($st);
+                    }
+                } else {
+                    // Handle specific exam
+                    $subRes = $conn->query("
+                        SELECT id, name FROM subjects
+                        WHERE class_id IN ($classIdList)
+                        ORDER BY name
+                    ");
+                    while ($sub = $subRes->fetch_assoc()) {
+                        $subjectsById[$sub['id']] = $sub['name'];
+                        if (!in_array($sub['name'], $subjects)) $subjects[] = $sub['name'];
+                    }
+
+                    $allSubIdsStr = implode(',', array_keys($subjectsById));
+
+                    // Get full/pass marks
+                    $res = $conn->query("
+                        SELECT subject_id, full_marks, pass_marks 
+                        FROM exam_subjects 
+                        WHERE exam_id = $exam_id AND subject_id IN ($allSubIdsStr)
+                    ");
+                    while ($row = $res->fetch_assoc()) {
+                        $subName = $subjectsById[$row['subject_id']] ?? 'Unknown';
+                        $marksInfo[$subName] = [
+                            'full_marks' => floatval($row['full_marks']),
+                            'pass_marks' => floatval($row['pass_marks'])
+                        ];
+                    }
+
+                    // Get marks
+                    $marksRes = $conn->query("
+                        SELECT student_id, subject_id, marks 
+                        FROM marks
+                        WHERE exam_id = $exam_id AND student_id IN ($ids) AND subject_id IN ($allSubIdsStr)
+                    ");
+                    while ($m = $marksRes->fetch_assoc()) {
+                        $subjectName = $subjectsById[$m['subject_id']] ?? 'Unknown';
+                        $results[$m['student_id']]['marks'][$subjectName] = (float)$m['marks'];
+                        $results[$m['student_id']]['subject_full'][$subjectName] = $marksInfo[$subjectName]['full_marks'] ?? 0;
+                        $results[$m['student_id']]['subject_pass'][$subjectName] = $marksInfo[$subjectName]['pass_marks'] ?? 0;
+                    }
+                }
+
+                // Calculate totals and results
                 foreach ($results as &$st) {
                     $totalMarks = 0;
                     $totalFull = 0;
                     $pass = true;
                     $totalGPA = 0;
                     $subjectCount = 0;
+                    $hasNG = false;
 
                     foreach ($st['marks'] as $sub => $mark) {
                         $full = $st['subject_full'][$sub] ?? 0;
@@ -302,46 +617,186 @@ if (isset($_GET['exam_id']) && isset($_GET['class_id']) && isset($_GET['section'
                         $totalMarks += $mark;
                         $totalFull += $full;
 
+                        $subjectPassed = ($mark >= $passMark);
+                        if (!$subjectPassed) {
+                            $pass = false;
+                            $hasNG = true;
+                        }
+
                         $percent = $full ? ($mark / $full) * 100 : 0;
-                        [$letter, $gpa] = getGradeAndGPA($percent);
+                        [$letter, $gpa] = getGradeAndGPA($percent, $subjectPassed);
                         $totalGPA += $gpa;
                         $subjectCount++;
-
-                        if ($mark < $passMark) $pass = false;
                     }
 
                     $st['total'] = round($totalMarks, 2);
                     $st['percent'] = $totalFull ? round(($totalMarks / $totalFull) * 100, 2) : 0;
                     $st['result'] = ($view_mode === 'grades') ? '-' : ($pass ? 'Pass' : 'Fail');
-                    [$letter, ] = getGradeAndGPA($st['percent']);
-                    $st['letter'] = $letter;
-                    $st['gpa'] = $subjectCount ? round($totalGPA / $subjectCount, 2) : 0;
+                    
+                    if (($view_mode === 'grades' || $view_mode === 'consolidated') && $hasNG) {
+                        $st['letter'] = 'NG';
+                        $st['gpa'] = 0.0;
+                    } else {
+                        [$letter, ] = getGradeAndGPA($st['percent'], $pass);
+                        $st['letter'] = $letter;
+                        $st['gpa'] = $subjectCount ? round($totalGPA / $subjectCount, 2) : 0;
+                    }
                 }
                 unset($st);
 
-                // ---------- SORT RESULTS ----------
-                if ($view_mode === 'grades') {
-                    uasort($results, fn($a, $b) => $b['gpa'] <=> $a['gpa']);
-                } else {
-                    uasort($results, fn($a, $b) => $b['percent'] <=> $a['percent']);
+                // Sort results
+                $passedStudents = [];
+                $failedStudents = [];
+                
+                foreach ($results as $student_id => $student) {
+                    if (strtolower($student['result']) === 'pass') {
+                        $passedStudents[$student_id] = $student;
+                    } else {
+                        $failedStudents[$student_id] = $student;
+                    }
                 }
+
+                if ($view_mode === 'grades') {
+                    uasort($passedStudents, function($a, $b) {
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        return $gpaCompare !== 0 ? $gpaCompare : $b['percent'] <=> $a['percent'];
+                    });
+                    uasort($failedStudents, function($a, $b) {
+                        $gpaCompare = $b['gpa'] <=> $a['gpa'];
+                        return $gpaCompare !== 0 ? $gpaCompare : $b['percent'] <=> $a['percent'];
+                    });
+                } else {
+                    uasort($passedStudents, fn($a, $b) => $b['percent'] <=> $a['percent']);
+                    uasort($failedStudents, fn($a, $b) => $b['percent'] <=> $a['percent']);
+                }
+
+                $results = $passedStudents + $failedStudents;
             }
         }
     }
-}
 
-if (isset($_GET['export']) && $_GET['export'] == '1') {
-    // Export only table part, no extra HTML
+    // Generate PDF only if we have results
     if (empty($results) || empty($subjects)) {
-        die("No data available for export.");
+        die("No results found for the selected exam/class/section.");
     }
 
-    header("Content-Type: application/vnd.ms-excel");
-    header("Content-Disposition: attachment; filename=results_" . date('Ymd_His') . ".xls");
-    header("Pragma: no-cache");
-    header("Expires: 0");
+    ob_start();
+    ?>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { text-align: center; color: #007BFF; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; }
+        th { background-color: #007BFF; color: white; padding: 6px; text-align: center; }
+        td { padding: 5px; border: 1px solid #ddd; text-align: center; }
+        .fail-mark { background-color: #ffdddd; }
+        .pass { color: #007B00; font-weight: bold; }
+        .fail { color: #b00000; font-weight: bold; }
+        .header-info { margin-bottom: 15px; text-align: center; font-size: 12px; }
+    </style>
+    
+    <h2>Student Results - <?= htmlspecialchars($view_mode) ?> View</h2>
+    <div class="header-info">
+        <div><strong>Class:</strong> Grade <?= htmlspecialchars($grade) ?> 
+        <?= ($section !== 'all') ? 'Section '.htmlspecialchars($section) : 'All Sections' ?></div>
+        <div><strong>Exam:</strong> <?= htmlspecialchars($exam_id === '0' ? 'Final Exam' : 
+            $conn->query("SELECT exam_name FROM exams WHERE id = $exam_id")->fetch_assoc()['exam_name']) ?></div>
+    </div>
+    
+    <table border="1" cellspacing="0" cellpadding="4">
+        <thead>
+            <tr>
+                <th style="width: 30px;">No.</th>
+                <th>Name</th>
+                <th>Section</th>
+                <?php foreach ($subjects as $subject): ?>
+                    <th><?= htmlspecialchars($subject) ?></th>
+                <?php endforeach; ?>
+                
+                <?php if ($view_mode !== 'grades'): ?>
+                    <th>Total</th>
+                    <th>%</th>
+                <?php endif; ?>
+                
+                <?php if ($view_mode !== 'marks'): ?>
+                    <th>Grade</th>
+                    <th>GPA</th>
+                <?php endif; ?>
+                
+                <?php if ($view_mode === 'marks'): ?>
+                    <th>Result</th>
+                <?php endif; ?>
+            </tr>
+        </thead>
+        <tbody>
+            <?php $i = 1; foreach ($results as $student_id => $st): ?>
+                <?php $resultClass = strtolower($st['result']) === 'pass' ? 'pass' : 'fail'; ?>
+                <tr>
+                    <td><?= $i++ ?></td>
+                    <td style="text-align: left;"><?= htmlspecialchars($st['full_name']) ?></td>
+                    <td><?= htmlspecialchars($st['section']) ?></td>
+                    
+                    <?php foreach ($subjects as $subject): ?>
+                        <?php
+                        $mark = $st['marks'][$subject] ?? 0;
+                        $full = $st['subject_full'][$subject] ?? 0;
+                        $passMark = $st['subject_pass'][$subject] ?? 0;
+                        $fail_mark_class = ($mark < $passMark) ? "fail-mark" : "";
+                        ?>
+                        <td class="<?= $fail_mark_class ?>">
+                            <?php
+                            if ($view_mode === 'grades') {
+                                $percent = $full ? ($mark / $full) * 100 : 0;
+                                [$letter,] = getGradeAndGPA($percent, ($mark >= $passMark));
+                                echo $letter;
+                            } elseif ($view_mode === 'consolidated') {
+                                $percent = $full ? ($mark / $full) * 100 : 0;
+                                [$letter,] = getGradeAndGPA($percent, ($mark >= $passMark));
+                                echo sprintf("%.2f (%s)", $mark, $letter);
+                            } else {
+                                echo sprintf("%.2f", $mark);
+                            }
+                            ?>
+                        </td>
+                    <?php endforeach; ?>
+                    
+                    <?php if ($view_mode !== 'grades'): ?>
+                        <td><?= $st['total'] ?></td>
+                        <td><?= $st['percent'] ?>%</td>
+                    <?php endif; ?>
+                    
+                    <?php if ($view_mode !== 'marks'): ?>
+                        <td><?= $st['letter'] ?></td>
+                        <td><?= $st['gpa'] ?></td>
+                    <?php endif; ?>
+                    
+                    <?php if ($view_mode === 'marks'): ?>
+                        <td class="<?= $resultClass ?>"><?= $st['result'] ?></td>
+                    <?php endif; ?>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php
+    $html = ob_get_clean();
 
-    renderResultsTable($results, $subjects, $view_mode);
+    // Configure Dompdf
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', true);
+    $options->set('defaultFont', 'Arial');
+    $options->set('isPhpEnabled', true);
+
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'landscape');
+    $dompdf->render();
+
+    if (ob_get_length()) ob_end_clean();
+
+    // Output the PDF
+    $dompdf->stream("results_".date('Ymd_His').".pdf", [
+        'Attachment' => false
+    ]);
     exit;
 }
 ?>
@@ -568,9 +1023,19 @@ if (isset($_GET['export']) && $_GET['export'] == '1') {
             </div>
 
             <div style="align-self: flex-end; display:flex; gap: 10px;">
-                <button class="result-btn" type="submit">Show Results</button>
-                <button class="result-btn" type="submit" name="export" value="1">Export to Excel</button>
-            </div>
+    <button class="result-btn" type="submit">Show Results</button>
+    <?php if (isset($_GET['exam_id']) && isset($_GET['class_id'])): ?>
+        <a href="?<?= 
+            http_build_query([
+                'export' => 'pdf',
+                'exam_id' => $_GET['exam_id'],
+                'class_id' => $_GET['class_id'],
+                'section' => $_GET['section'] ?? 'all',
+                'view_mode' => $_GET['view_mode'] ?? 'marks'
+            ]) 
+        ?>" target="_blank" class="result-btn" style="background-color: #dc3545;">Export PDF</a>
+    <?php endif; ?>
+</div>
         </form>
 
         <script>
