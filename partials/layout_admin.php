@@ -22,6 +22,12 @@ include_once 'config.php';
     hover:ring-4 hover:ring-blue-400 hover:ring-offset-2
     hover:shadow-[0_0_30px_rgba(59,130,246,0.6)] filter hover:brightness-110;
 }
+#sidebar {
+  overflow-y: auto;      /* Enable vertical scrolling */
+  height: 100vh;         /* Full viewport height */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
 
 </style>
   
@@ -42,11 +48,12 @@ include_once 'config.php';
         <li><a href="<?= BASE_URL ?>/admin/manage_teachers.php" class="block px-6 py-3 hover:bg-gray-200">👨‍🏫 Teachers</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_payments.php" class="block px-6 py-3 hover:bg-gray-200">💰 Payments</a></li>
         <li><a href="<?= BASE_URL ?>/admin/manage_parents.php" class="block px-6 py-3 hover:bg-gray-200">👨‍👩‍👧 Parents</a></li>
-        <li><a href="<?= BASE_URL ?>/admin/manage_exams.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Exam</a></li>
-        <li><a href="<?= BASE_URL ?>/admin/manage_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Result</a></li>
+        <li><a href="<?= BASE_URL ?>/admin/manage_exams.php" class="block px-6 py-3 hover:bg-gray-200">📋 Exam</a></li>
+        <li><a href="<?= BASE_URL ?>/admin/manage_results.php" class="block px-6 py-3 hover:bg-gray-200">📋 Result</a></li>
+        <li><a href="<?= BASE_URL ?>/admin/announcement.php" class="block px-6 py-3 hover:bg-gray-200">📣 Announcement</a></li>
         <li><a href="<?= BASE_URL ?>/a_settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>
         <li>
-          <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
+          <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">↪️ Logout</button>
         </li>
       </ul>
     </nav>

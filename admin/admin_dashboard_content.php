@@ -1,6 +1,16 @@
 <?php
 include 'check_admin.php'; // Handles session, admin check, and $school_id
 
+// Fetch admin username from session
+$admin_username = $_SESSION['username'] ?? 'Admin';
+
+// Fetch school info (name, address)
+$stmt = $conn->prepare("SELECT name, address FROM schools WHERE id = ?");
+$stmt->bind_param("i", $school_id);
+$stmt->execute();
+$schoolRes = $stmt->get_result();
+$school = $schoolRes->fetch_assoc() ?? ['name' => 'Unknown School', 'address' => ''];
+
 // Fetch counts for cards
 $counts = [
   'teachers' => 0,
@@ -71,77 +81,92 @@ while ($row = $res->fetch_assoc()) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>School Admin Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-gray-100 font-sans">
-  <div class="flex h-screen">
-    <!-- Main Content -->
-    <div class="flex-1 p-6 space-y-6 overflow-auto">
-      <header class="flex justify-between items-center">
-        <h1 class="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
-        <span class="text-sm text-gray-600" id="current-date">📅 </span>
-      </header>
 
-      <!-- Stat Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white p-6 rounded-xl shadow-md">
-          <p class="text-gray-500 text-sm">Total Teachers</p>
-          <h2 class="text-3xl font-bold text-green-600 mt-2"><?php echo $counts['teachers']; ?></h2>
-        </div>
-        <div class="bg-white p-6 rounded-xl shadow-md">
-          <p class="text-gray-500 text-sm">Total Students</p>
-          <h2 class="text-3xl font-bold text-purple-600 mt-2"><?php echo $counts['students']; ?></h2>
-        </div>
-        <div class="bg-white p-6 rounded-xl shadow-md">
-          <p class="text-gray-500 text-sm">Fees Collected</p>
-          <h2 class="text-3xl font-bold text-yellow-600 mt-2">Rs. <?php echo number_format($counts['fees']); ?></h2>
-        </div>
+<body class="bg-gradient-to-tr from-blue-50 to-indigo-100 font-sans min-h-screen">
+
+  <div class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <!-- Header -->
+    <header class="mb-10 text-center">
+      <h1 class="text-5xl font-extrabold text-indigo-900 drop-shadow-md">
+        <?= ucwords(htmlspecialchars($school['name'])) ?>
+      </h1>
+
+      <?php if ($school['address']): ?>
+        <p class="text-indigo-700 text-lg mt-1 font-semibold"><?= htmlspecialchars($school['address']) ?></p>
+      <?php endif; ?>
+      <p class="mt-6 text-xl text-gray-700">
+        Welcome back, <span class="text-blue-700 font-semibold"><?= htmlspecialchars($admin_username) ?></span> 👋
+      </p>
+      <div class="mt-2 text-gray-500 text-sm" id="current-date"></div>
+    </header>
+
+
+    <!-- Stats Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-10">
+      <div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+        <p class="text-gray-500 uppercase font-semibold tracking-wide">Total Teachers</p>
+        <p class="text-4xl font-bold text-green-600 mt-2"><?= $counts['teachers'] ?></p>
+        <p class="mt-2 text-sm text-green-700">Active educators in your school</p>
       </div>
 
-      <!-- Charts -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Bar Chart: Students & Payments (Last 6 Months) -->
-        <div class="bg-white p-6 rounded-xl shadow-md">
-          <h3 class="text-lg font-semibold mb-4">Enrollment & Payments (Last 6 Months)</h3>
-          <canvas id="enrollmentChart"></canvas>
-        </div>
-
-        <!-- Donut Chart: Class Distribution -->
-        <div class="bg-white p-6 rounded-xl shadow-md">
-          <h3 class="text-lg font-semibold mb-4">Students by Grade</h3>
-          <canvas id="classChart"></canvas>
-        </div>
+      <div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+        <p class="text-gray-500 uppercase font-semibold tracking-wide">Total Students</p>
+        <p class="text-4xl font-bold text-purple-600 mt-2"><?= $counts['students'] ?></p>
+        <p class="mt-2 text-sm text-purple-700">Learners currently enrolled</p>
       </div>
-    </div>
+
+      <div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+        <p class="text-gray-500 uppercase font-semibold tracking-wide">Fees Collected</p>
+        <p class="text-4xl font-bold text-yellow-600 mt-2">Rs. <?= number_format($counts['fees']) ?></p>
+        <p class="mt-2 text-sm text-yellow-700">Total fees received to date</p>
+      </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+      <div class="bg-white rounded-xl shadow-lg p-6">
+        <h2 class="text-xl font-semibold mb-6 text-gray-800">Enrollment & Payments (Last 6 Months)</h2>
+        <canvas id="enrollmentChart" class="w-full"></canvas>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-lg p-6">
+        <h2 class="text-xl font-semibold mb-6 text-gray-800">Students by Grade</h2>
+        <canvas id="classChart" class="w-full"></canvas>
+      </div>
+    </section>
   </div>
 
   <script>
-    // Current Date
+    // Current Date Display
     const dateSpan = document.getElementById('current-date');
     const today = new Date();
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    dateSpan.innerHTML = `📅 ${today.toLocaleDateString('en-US', options)}`;
+    dateSpan.textContent = `📅 ${today.toLocaleDateString('en-US', options)}`;
 
-    // Bar Chart (Students & Payments)
+    // Enrollment & Payments Chart
     const ctx1 = document.getElementById('enrollmentChart').getContext('2d');
     new Chart(ctx1, {
       type: 'bar',
       data: {
-        labels: <?php echo json_encode($months); ?>,
+        labels: <?= json_encode($months) ?>,
         datasets: [
           {
             label: 'Students Enrolled',
-            data: <?php echo json_encode($studentData); ?>,
+            data: <?= json_encode($studentData) ?>,
             backgroundColor: '#3B82F6',
             yAxisID: 'yStudents'
           },
           {
             label: 'Fees Collected (Rs.)',
-            data: <?php echo json_encode($paymentData); ?>,
+            data: <?= json_encode($paymentData) ?>,
             backgroundColor: '#F59E0B',
             yAxisID: 'yFees'
           }
@@ -149,6 +174,7 @@ while ($row = $res->fetch_assoc()) {
       },
       options: {
         responsive: true,
+        interaction: { mode: 'index', intersect: false },
         scales: {
           yStudents: {
             type: 'linear',
@@ -162,18 +188,22 @@ while ($row = $res->fetch_assoc()) {
             beginAtZero: true,
             grid: { drawOnChartArea: false }
           }
+        },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: { enabled: true }
         }
       }
     });
 
-    // Donut Chart (Students by Grade)
+    // Students by Grade Donut Chart
     const ctx2 = document.getElementById('classChart').getContext('2d');
     new Chart(ctx2, {
       type: 'doughnut',
       data: {
-        labels: <?php echo json_encode($classLabels); ?>,
+        labels: <?= json_encode($classLabels) ?>,
         datasets: [{
-          data: <?php echo json_encode($classCounts); ?>,
+          data: <?= json_encode($classCounts) ?>,
           backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#6366F1', '#DC2626']
         }]
       },
@@ -183,5 +213,31 @@ while ($row = $res->fetch_assoc()) {
       }
     });
   </script>
+
+
+<?php include '../partials/footer.php'; ?>
+
+  </div>
+
+  <script>
+    // Responsive adjustments
+    function adjustLayout() {
+      const sidebar = document.getElementById('sidebar');
+      const mainContent = document.getElementById('main-content');
+      if (window.innerWidth < 768) {
+        sidebar.classList.add('-translate-x-full');
+        mainContent.style.marginLeft = '0';
+        mainContent.style.width = '100vw';
+      } else {
+        sidebar.classList.remove('-translate-x-full');
+        mainContent.style.marginLeft = '16rem';
+        mainContent.style.width = 'calc(100vw - 16rem)';
+      }
+    }
+
+    window.addEventListener('resize', adjustLayout);
+    window.addEventListener('load', adjustLayout);
+  </script>
 </body>
+
 </html>
