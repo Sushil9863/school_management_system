@@ -1,14 +1,16 @@
 <?php
 require '../partials/dbconnect.php';
-require 'check_admin.php'; // admin check & session school_id set भैसकेको मानिन्छ
+require 'check_admin.php'; 
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
 
-// admin check गर्दा school_id session मा हुनु पर्छ
 $school_id = $_SESSION['school_id'] ?? null;
 if (!$school_id) {
   die("Invalid access: School not identified.");
 }
+
+// Initialize error array
+$errors = [];
 
 // Parents query filtered by school_id
 $parent_stmt = $conn->prepare("SELECT id, full_name FROM parents WHERE school_id = ? ORDER BY full_name ASC");
@@ -25,39 +27,77 @@ $class_result = $class_stmt->get_result();
 // Handle POST actions for add/edit/delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = $_POST['action'] ?? '';
-
-  if ($action === 'add') {
-    $stmt = $conn->prepare("INSERT INTO students (full_name, gender, dob, class_id, parent_id, school_id) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param(
-      "sssiii",
-      $_POST['full_name'],
-      $_POST['gender'],
-      $_POST['dob'],
-      $_POST['class_id'],
-      $_POST['parent'],
-      $school_id
-    );
-    $stmt->execute();
-    header("Location: manage_students.php");
-    exit;
-  } elseif ($action === 'edit') {
-    $stmt = $conn->prepare("UPDATE students SET full_name=?, gender=?, dob=?, class_id=?, parent_id=? WHERE id=? AND school_id=?");
-    $stmt->bind_param(
-      "sssiiii",
-      $_POST['full_name'],
-      $_POST['gender'],
-      $_POST['dob'],
-      $_POST['class_id'],
-      $_POST['parent'],
-      $_POST['student_id'],
-      $school_id
-    );
-    $stmt->execute();
-    header("Location: manage_students.php");
-    exit;
+  
+  if ($action === 'add' || $action === 'edit') {
+    $full_name = trim($_POST['full_name'] ?? '');
+    $gender = $_POST['gender'] ?? '';
+    $dob = $_POST['dob'] ?? '';
+    $class_id = $_POST['class_id'] ?? '';
+    $parent_id = $_POST['parent'] ?? '';
+    
+    // Validate full name (only user-input field)
+    if (empty($full_name)) {
+      $errors['full_name'] = "Full name is required";
+    } elseif (!preg_match('/^[a-zA-Z\s\-\.]{2,100}$/', $full_name)) {
+      $errors['full_name'] = "Name must be 2-100 letters, spaces, hyphens or periods";
+    }
+    
+    // Validate date of birth (only user-input field)
+    if (empty($dob)) {
+      $errors['dob'] = "Date of birth is required";
+    } else {
+      $dob_date = DateTime::createFromFormat('Y-m-d', $dob);
+      $today = new DateTime();
+      $min_age = new DateTime('-3 years');
+      $max_age = new DateTime('-18 years');
+      
+      if (!$dob_date) {
+        $errors['dob'] = "Invalid date format";
+      } elseif ($dob_date > $min_age) {
+        $errors['dob'] = "Student must be at least 3 years old";
+      } elseif ($dob_date < $max_age) {
+        $errors['dob'] = "Student must be younger than 18 years";
+      }
+    }
+    
+    // If no errors, proceed with database operation
+    if (empty($errors)) {
+      if ($action === 'add') {
+        $stmt = $conn->prepare("INSERT INTO students (full_name, gender, dob, class_id, parent_id, school_id) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param(
+          "sssiii",
+          $full_name,
+          $gender,
+          $dob,
+          $class_id,
+          $parent_id,
+          $school_id
+        );
+        $stmt->execute();
+        header("Location: manage_students.php");
+        exit;
+      } elseif ($action === 'edit') {
+        $student_id = $_POST['student_id'] ?? 0;
+        $stmt = $conn->prepare("UPDATE students SET full_name=?, gender=?, dob=?, class_id=?, parent_id=? WHERE id=? AND school_id=?");
+        $stmt->bind_param(
+          "sssiiii",
+          $full_name,
+          $gender,
+          $dob,
+          $class_id,
+          $parent_id,
+          $student_id,
+          $school_id
+        );
+        $stmt->execute();
+        header("Location: manage_students.php");
+        exit;
+      }
+    }
   } elseif ($action === 'delete') {
+    $student_id = $_POST['student_id'] ?? 0;
     $stmt = $conn->prepare("DELETE FROM students WHERE id = ? AND school_id = ?");
-    $stmt->bind_param("ii", $_POST['student_id'], $school_id);
+    $stmt->bind_param("ii", $student_id, $school_id);
     $stmt->execute();
     header("Location: manage_students.php");
     exit;
@@ -130,6 +170,28 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
   <meta charset="UTF-8" />
   <title>Manage Students</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .error {
+      color: #ef4444;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+      display: none;
+    }
+    .error-border {
+      border-color: #ef4444 !important;
+    }
+    .success-border {
+      border-color: #10b981 !important;
+    }
+    .input-error {
+      animation: shake 0.5s;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+      20%, 40%, 60%, 80% { transform: translateX(5px); }
+    }
+  </style>
 </head>
 
 <body class="bg-gradient-to-br from-blue-200 to-purple-300 min-h-screen p-6">
@@ -192,7 +254,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
           </tr>
         <?php endwhile; ?>
       </tbody>
-
     </table>
   </div>
 
@@ -202,15 +263,22 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     <div onclick="event.stopPropagation();"
       class="bg-white/30 backdrop-blur-lg shadow-2xl hover:ring-4 hover:ring-blue-400 rounded-2xl p-6 w-full max-w-2xl animate-fade-in">
       <h2 id="modalTitle" class="text-2xl font-bold text-white mb-4 text-center">➕ Add Student</h2>
-      <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-white">
+      <form method="POST" id="studentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-white">
         <input type="hidden" name="action" id="formAction" />
         <input type="hidden" name="student_id" id="student_id" />
-        <div>
+        
+        <!-- Full Name Field -->
+        <div class="form-group">
           <label>Full Name</label>
           <input type="text" name="full_name" id="full_name" required
-            class="w-full px-3 py-2 rounded bg-white/80 text-black" />
+            class="w-full px-3 py-2 rounded bg-white/80 text-black" 
+            pattern="^[a-zA-Z\s\-\.]{2,100}$"
+            title="2-100 letters, spaces, hyphens or periods"/>
+          <div id="full_name_error" class="error"></div>
         </div>
-        <div>
+        
+        <!-- Gender Field (select - no validation) -->
+        <div class="form-group">
           <label>Gender</label>
           <select name="gender" id="gender" required class="w-full px-3 py-2 rounded bg-white/80 text-black">
             <option value="">Select</option>
@@ -218,16 +286,21 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <option value="Female">Female</option>
           </select>
         </div>
-        <div>
-          <label>DOB</label>
-          <input type="date" name="dob" id="dob" required class="w-full px-3 py-2 rounded bg-white/80 text-black" />
+        
+        <!-- Date of Birth Field -->
+        <div class="form-group">
+          <label>Date of Birth</label>
+          <input type="date" name="dob" id="dob" required 
+            class="w-full px-3 py-2 rounded bg-white/80 text-black" />
+          <div id="dob_error" class="error"></div>
         </div>
-        <div>
+        
+        <!-- Class Field (select - no validation) -->
+        <div class="form-group">
           <label>Class</label>
           <select name="class_id" id="class_id" required class="w-full px-3 py-2 rounded bg-white/80 text-black">
             <option value="">Select</option>
             <?php
-            // Reset pointer to fetch from beginning
             $class_result->data_seek(0);
             while ($class = $class_result->fetch_assoc()):
               ?>
@@ -235,7 +308,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <?php endwhile; ?>
           </select>
         </div>
-        <div>
+        
+        <!-- Parent Field (select - no validation) -->
+        <div class="form-group">
           <label>Parent</label>
           <select name="parent" id="parent" required class="w-full px-3 py-2 rounded bg-white/80 text-black">
             <option value="">Select</option>
@@ -247,6 +322,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <?php endwhile; ?>
           </select>
         </div>
+        
         <div class="col-span-2 flex justify-end space-x-2 mt-4">
           <button type="button" onclick="closeAllModals()" class="bg-gray-400 px-4 py-2 rounded">Cancel</button>
           <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
@@ -259,11 +335,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center">
     <div onclick="event.stopPropagation();"
       class="bg-white/30 backdrop-blur-lg p-6 rounded-2xl shadow-2xl hover:ring-4 hover:ring-red-400 w-full max-w-md animate-fade-in text-white text-center">
-      <form method="POST">
+      <form method="POST" id="deleteForm">
         <input type="hidden" name="action" value="delete" />
         <input type="hidden" name="student_id" id="delete_id" />
         <h3 class="text-2xl font-bold mb-4">⚠️ Confirm Deletion</h3>
-        <p class="mb-6">Are you sure you want to delete this student?</p>
+        <p class="mb-6">Are you sure you want to delete this student? This action cannot be undone.</p>
         <div class="flex justify-center space-x-4">
           <button type="button" onclick="closeAllModals()"
             class="bg-gray-300 text-black px-4 py-2 rounded">Cancel</button>
@@ -275,6 +351,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
   </div>
 
   <script>
+    // DOM elements
+    const studentForm = document.getElementById('studentForm');
+    const fullNameInput = document.getElementById('full_name');
+    const dobInput = document.getElementById('dob');
+    
+    // Validation patterns
+    const nameRegex = /^[a-zA-Z\s\-\.]{5,100}$/;
+    
+    // Open modal functions
     function openAddModal() {
       document.getElementById('formAction').value = 'add';
       document.getElementById('student_id').value = '';
@@ -285,6 +370,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('parent').value = '';
       document.getElementById('modalTitle').innerText = '➕ Add Student';
       document.getElementById('studentModal').classList.remove('hidden');
+      
+      // Clear any previous errors
+      clearErrors();
     }
 
     function openEditModal(data) {
@@ -297,6 +385,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('parent').value = data.parent_id;
       document.getElementById('modalTitle').innerText = '✏️ Edit Student';
       document.getElementById('studentModal').classList.remove('hidden');
+      
+      // Clear any previous errors
+      clearErrors();
     }
 
     function openDeleteModal(id) {
@@ -304,6 +395,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('deleteModal').classList.remove('hidden');
     }
 
+    // Close modal functions
     function closeModal(e) {
       if (e.target.classList.contains('fixed')) e.target.classList.add('hidden');
     }
@@ -313,14 +405,142 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('deleteModal').classList.add('hidden');
     }
 
+    // Table filtering
     function filterTable() {
       const filter = document.getElementById("searchInput").value.toLowerCase();
       const rows = document.querySelectorAll("#studentTable tbody tr");
       rows.forEach(row => {
-        const name = row.querySelector("td").textContent.toLowerCase();
+        const name = row.querySelector("td:nth-child(2)").textContent.toLowerCase();
         row.style.display = name.includes(filter) ? "" : "none";
       });
     }
+
+    // Clear all error messages and styles
+    function clearErrors() {
+      document.getElementById('full_name_error').style.display = 'none';
+      document.getElementById('dob_error').style.display = 'none';
+      
+      fullNameInput.classList.remove('error-border', 'input-error');
+      dobInput.classList.remove('error-border', 'input-error');
+    }
+
+    // Real-time validation for full name
+    fullNameInput.addEventListener('input', function() {
+      validateFullName();
+    });
+
+    // Real-time validation for date of birth
+    dobInput.addEventListener('change', function() {
+      validateDOB();
+    });
+
+    // Validate full name with regex
+    function validateFullName() {
+      const errorElement = document.getElementById('full_name_error');
+      
+      if (!fullNameInput.value.trim()) {
+        showError(fullNameInput, errorElement, 'Full name is required');
+        return false;
+      }
+      
+      if (!nameRegex.test(fullNameInput.value)) {
+        showError(fullNameInput, errorElement, 'Name is not valid');
+        return false;
+      }
+      
+      clearError(fullNameInput, errorElement);
+      return true;
+    }
+
+    // Validate date of birth
+    function validateDOB() {
+      const errorElement = document.getElementById('dob_error');
+      
+      if (!dobInput.value) {
+        showError(dobInput, errorElement, 'Date of birth is required');
+        return false;
+      }
+      
+      const dobDate = new Date(dobInput.value);
+      const today = new Date();
+      const minAgeDate = new Date();
+      minAgeDate.setFullYear(today.getFullYear() - 3);
+      const maxAgeDate = new Date();
+      maxAgeDate.setFullYear(today.getFullYear() - 18);
+      
+      if (dobDate > minAgeDate) {
+        showError(dobInput, errorElement, 'Student must be at least 3 years old');
+        return false;
+      }
+      
+      if (dobDate < maxAgeDate) {
+        showError(dobInput, errorElement, 'Student must be younger than 18 years');
+        return false;
+      }
+      
+      clearError(dobInput, errorElement);
+      return true;
+    }
+
+    // Show error for a field
+    function showError(inputElement, errorElement, message) {
+      inputElement.classList.add('error-border', 'input-error');
+      errorElement.textContent = message;
+      errorElement.style.display = 'block';
+      
+      // Remove shake animation after it completes
+      setTimeout(() => {
+        inputElement.classList.remove('input-error');
+      }, 500);
+    }
+
+    // Clear error for a field
+    function clearError(inputElement, errorElement) {
+      inputElement.classList.remove('error-border');
+      inputElement.classList.add('success-border');
+      errorElement.style.display = 'none';
+    }
+
+    // Form submission validation
+    studentForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Validate all fields
+      const isFullNameValid = validateFullName();
+      const isDOBValid = validateDOB();
+      
+      // If all valid, submit the form
+      if (isFullNameValid && isDOBValid) {
+        this.submit();
+      } else {
+        // Scroll to the first error
+        const firstError = document.querySelector('.error-border');
+        if (firstError) {
+          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    });
+
+    // Delete confirmation with double-check
+    deleteForm.addEventListener('submit', function(e) {
+      if (!confirm('Are you absolutely sure you want to delete this student? This cannot be undone.')) {
+        e.preventDefault();
+      }
+    });
+
+    // Initialize date picker with reasonable limits
+    document.addEventListener('DOMContentLoaded', function() {
+      const today = new Date();
+      const minDate = new Date();
+      minDate.setFullYear(today.getFullYear() - 18);
+      const maxDate = new Date();
+      maxDate.setFullYear(today.getFullYear() - 3);
+      
+      if (dobInput) {
+        dobInput.min = minDate.toISOString().split('T')[0];
+        dobInput.max = maxDate.toISOString().split('T')[0];
+      }
+    });
   </script>
 </body>
 

@@ -12,13 +12,14 @@ $res = $conn->query("SELECT class_teacher_id FROM classes WHERE class_teacher_id
 while ($row = $res->fetch_assoc()) {
   $assigned_teachers[] = $row['class_teacher_id'];
 }
+
 $existingClassPairs = [];
 $result = $conn->query("SELECT grade, section FROM classes WHERE school_id = $school_id");
 while ($row = $result->fetch_assoc()) {
   $existingClassPairs[] = ['grade' => strtolower($row['grade']), 'section' => strtolower($row['section'])];
 }
 
-// Fetch teachers for this school (assuming teachers table has school_id)
+// Fetch teachers for this school
 $stmt = $conn->prepare("SELECT id, username, full_name FROM teachers WHERE school_id = ? ORDER BY full_name ASC");
 $stmt->bind_param("i", $school_id);
 $stmt->execute();
@@ -27,39 +28,75 @@ $teacher_result = $stmt->get_result();
 // Handle Edit Section
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_section'])) {
   $class_id = $_POST['class_id'];
-  $new_section_name = $_POST['section_name'];
-
+  $new_section_name = trim($_POST['section_name']);
+  
+  // Server-side validation
+  $errors = [];
+  
+  if (empty($new_section_name)) {
+    $errors[] = "Section name cannot be empty.";
+  } elseif (!preg_match('/^[a-zA-Z0-9 ]+$/', $new_section_name)) {
+    $errors[] = "Section name can only contain letters, numbers and spaces.";
+  } elseif (strlen($new_section_name) > 10) {
+    $errors[] = "Section name cannot exceed 10 characters.";
+  }
+  
   // Verify class belongs to this school
-  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE id = ? AND school_id = ?");
+  $stmtCheck = $conn->prepare("SELECT id, grade FROM classes WHERE id = ? AND school_id = ?");
   $stmtCheck->bind_param("ii", $class_id, $school_id);
   $stmtCheck->execute();
-  if ($stmtCheck->get_result()->num_rows === 0) {
-    die("Unauthorized section edit.");
+  $classResult = $stmtCheck->get_result();
+  
+  if ($classResult->num_rows === 0) {
+    $errors[] = "Unauthorized section edit.";
+  } else {
+    $classData = $classResult->fetch_assoc();
+    $grade = $classData['grade'];
+    
+    // Check if section already exists for this grade
+    $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE grade = ? AND section = ? AND school_id = ? AND id != ?");
+    $stmtCheck->bind_param("ssii", $grade, $new_section_name, $school_id, $class_id);
+    $stmtCheck->execute();
+    if ($stmtCheck->get_result()->num_rows > 0) {
+      $errors[] = "This section already exists for grade $grade.";
+    }
   }
+  
+  if (empty($errors)) {
+    $stmt = $conn->prepare("UPDATE classes SET section = ? WHERE id = ?");
+    $stmt->bind_param("si", $new_section_name, $class_id);
+    $stmt->execute();
 
-  $stmt = $conn->prepare("UPDATE classes SET section = ? WHERE id = ?");
-  $stmt->bind_param("si", $new_section_name, $class_id);
-  $stmt->execute();
+    $stmt = $conn->prepare("UPDATE sections SET section_name = ? WHERE class_id = ?");
+    $stmt->bind_param("si", $new_section_name, $class_id);
+    $stmt->execute();
 
-  $stmt = $conn->prepare("UPDATE sections SET section_name = ? WHERE class_id = ?");
-  $stmt->bind_param("si", $new_section_name, $class_id);
-  $stmt->execute();
-
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id));
-  exit;
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id) . "&success=Section updated successfully");
+    exit;
+  } else {
+    $error_message = implode("<br>", $errors);
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id) . "&error=" . urlencode($error_message));
+    exit;
+  }
 }
 
 // Handle Change Class Teacher
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_teacher'])) {
   $class_id = $_POST['class_id'];
   $new_teacher_id = $_POST['teacher_id'];
+  
+  $errors = [];
+  
+  if (empty($new_teacher_id)) {
+    $errors[] = "Please select a teacher.";
+  }
 
   // Check that the class belongs to the current school
   $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE id = ? AND school_id = ?");
   $stmtCheck->bind_param("ii", $class_id, $school_id);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows === 0) {
-    die("Unauthorized teacher change.");
+    $errors[] = "Unauthorized teacher change.";
   }
 
   // Check that the teacher belongs to the current school
@@ -68,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_teacher'])) {
   $stmt->execute();
   $result = $stmt->get_result();
   if ($result->num_rows === 0) {
-    die("Invalid teacher.");
+    $errors[] = "Invalid teacher selected.";
   }
 
   // Check if teacher is already assigned as class teacher to another class
@@ -76,72 +113,141 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_teacher'])) {
   $stmtCheck->bind_param("iii", $new_teacher_id, $class_id, $school_id);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows > 0) {
-    die("This teacher is already assigned as class teacher to another class.");
+    $errors[] = "This teacher is already assigned as class teacher to another class.";
   }
 
-  // ✅ Store teacher ID in class_teacher field
-  $stmt = $conn->prepare("UPDATE classes SET class_teacher_id = ? WHERE id = ?");
-  $stmt->bind_param("ii", $new_teacher_id, $class_id);
-  $stmt->execute();
+  if (empty($errors)) {
+    // Store teacher ID in class_teacher field
+    $stmt = $conn->prepare("UPDATE classes SET class_teacher_id = ? WHERE id = ?");
+    $stmt->bind_param("ii", $new_teacher_id, $class_id);
+    $stmt->execute();
 
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id));
-
-  exit;
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id) . "&success=Class teacher updated successfully");
+    exit;
+  } else {
+    $error_message = implode("<br>", $errors);
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . urlencode($class_id) . "&error=" . urlencode($error_message));
+    exit;
+  }
 }
-
 
 // Handle Add Subject
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_subject'])) {
-  $subject_name = $_POST['subject_name'];
+  $subject_name = trim($_POST['subject_name']);
   $class_id = $_POST['class_id'];
   $teacher_id = $_POST['teacher_id'];
+  
+  $errors = [];
+  
+  if (empty($subject_name)) {
+    $errors[] = "Subject name cannot be empty.";
+  } elseif (!preg_match('/^[a-zA-Z0-9 ]+$/', $subject_name)) {
+    $errors[] = "Subject name can only contain letters, numbers and spaces.";
+  } elseif (strlen($subject_name) > 50) {
+    $errors[] = "Subject name cannot exceed 50 characters.";
+  }
+  
+  if (empty($teacher_id)) {
+    $errors[] = "Please select a teacher.";
+  }
 
   // Check class belongs to school
   $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE id = ? AND school_id = ?");
   $stmtCheck->bind_param("ii", $class_id, $school_id);
   $stmtCheck->execute();
-  if ($stmtCheck->get_result()->num_rows === 0)
-    die("Unauthorized.");
+  if ($stmtCheck->get_result()->num_rows === 0) {
+    $errors[] = "Unauthorized action.";
+  }
 
   // Check teacher belongs to school
   $stmtCheck2 = $conn->prepare("SELECT id FROM teachers WHERE id = ? AND school_id = ?");
   $stmtCheck2->bind_param("ii", $teacher_id, $school_id);
   $stmtCheck2->execute();
-  if ($stmtCheck2->get_result()->num_rows === 0)
-    die("Invalid teacher.");
+  if ($stmtCheck2->get_result()->num_rows === 0) {
+    $errors[] = "Invalid teacher selected.";
+  }
+  
+  // Check if subject already exists for this class
+  $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND name = ?");
+  $stmtCheck->bind_param("is", $class_id, $subject_name);
+  $stmtCheck->execute();
+  if ($stmtCheck->get_result()->num_rows > 0) {
+    $errors[] = "This subject already exists for this class.";
+  }
 
-  $stmt = $conn->prepare("INSERT INTO subjects (school_id, name, class_id, teacher_id) VALUES (?, ?, ?, ?)");
-  $stmt->bind_param("isii", $school_id, $subject_name, $class_id, $teacher_id);
-  $stmt->execute();
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id);
-  exit;
+  if (empty($errors)) {
+    $stmt = $conn->prepare("INSERT INTO subjects (school_id, name, class_id, teacher_id) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isii", $school_id, $subject_name, $class_id, $teacher_id);
+    $stmt->execute();
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id . "&success=Subject added successfully");
+    exit;
+  } else {
+    $error_message = implode("<br>", $errors);
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id . "&error=" . urlencode($error_message));
+    exit;
+  }
 }
 
 // Handle Edit Subject
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_subject'])) {
   $subject_id = $_POST['subject_id'];
-  $subject_name = $_POST['subject_name'];
+  $subject_name = trim($_POST['subject_name']);
   $teacher_id = $_POST['teacher_id'];
+  
+  $errors = [];
+  
+  if (empty($subject_name)) {
+    $errors[] = "Subject name cannot be empty.";
+  } elseif (!preg_match('/^[a-zA-Z0-9 ]+$/', $subject_name)) {
+    $errors[] = "Subject name can only contain letters, numbers and spaces.";
+  } elseif (strlen($subject_name) > 50) {
+    $errors[] = "Subject name cannot exceed 50 characters.";
+  }
+  
+  if (empty($teacher_id)) {
+    $errors[] = "Please select a teacher.";
+  }
 
   // Check subject belongs to this school via class
-  $stmtCheck = $conn->prepare("SELECT s.id FROM subjects s JOIN classes c ON s.class_id = c.id WHERE s.id = ? AND c.school_id = ?");
+  $stmtCheck = $conn->prepare("SELECT s.id, s.class_id FROM subjects s JOIN classes c ON s.class_id = c.id WHERE s.id = ? AND c.school_id = ?");
   $stmtCheck->bind_param("ii", $subject_id, $school_id);
   $stmtCheck->execute();
-  if ($stmtCheck->get_result()->num_rows === 0)
-    die("Unauthorized.");
+  $subjectResult = $stmtCheck->get_result();
+  
+  if ($subjectResult->num_rows === 0) {
+    $errors[] = "Unauthorized action.";
+  } else {
+    $subjectData = $subjectResult->fetch_assoc();
+    $class_id = $subjectData['class_id'];
+    
+    // Check if subject name already exists for this class (excluding current subject)
+    $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND name = ? AND id != ?");
+    $stmtCheck->bind_param("isi", $class_id, $subject_name, $subject_id);
+    $stmtCheck->execute();
+    if ($stmtCheck->get_result()->num_rows > 0) {
+      $errors[] = "This subject already exists for this class.";
+    }
+  }
 
   // Check teacher belongs to school
   $stmtCheck2 = $conn->prepare("SELECT id FROM teachers WHERE id = ? AND school_id = ?");
   $stmtCheck2->bind_param("ii", $teacher_id, $school_id);
   $stmtCheck2->execute();
-  if ($stmtCheck2->get_result()->num_rows === 0)
-    die("Invalid teacher.");
+  if ($stmtCheck2->get_result()->num_rows === 0) {
+    $errors[] = "Invalid teacher selected.";
+  }
 
-  $stmt = $conn->prepare("UPDATE subjects SET name = ?, teacher_id = ? WHERE id = ?");
-  $stmt->bind_param("sii", $subject_name, $teacher_id, $subject_id);
-  $stmt->execute();
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $_GET['class_id']);
-  exit;
+  if (empty($errors)) {
+    $stmt = $conn->prepare("UPDATE subjects SET name = ?, teacher_id = ? WHERE id = ?");
+    $stmt->bind_param("sii", $subject_name, $teacher_id, $subject_id);
+    $stmt->execute();
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $_GET['class_id'] . "&success=Subject updated successfully");
+    exit;
+  } else {
+    $error_message = implode("<br>", $errors);
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $_GET['class_id'] . "&error=" . urlencode($error_message));
+    exit;
+  }
 }
 
 // Handle Delete Subject
@@ -152,53 +258,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_subject'])) {
   $stmtCheck = $conn->prepare("SELECT s.id FROM subjects s JOIN classes c ON s.class_id = c.id WHERE s.id = ? AND c.school_id = ?");
   $stmtCheck->bind_param("ii", $subject_id, $school_id);
   $stmtCheck->execute();
-  if ($stmtCheck->get_result()->num_rows === 0)
-    die("Unauthorized.");
+  if ($stmtCheck->get_result()->num_rows === 0) {
+    die("Unauthorized action.");
+  }
 
   $stmt = $conn->prepare("DELETE FROM subjects WHERE id = ?");
   $stmt->bind_param("i", $subject_id);
   $stmt->execute();
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $_GET['class_id']);
+  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $_GET['class_id'] . "&success=Subject deleted successfully");
   exit;
 }
 
 // Handle Add Class
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_class'])) {
-  $grade = $_POST['grade'];
-  $section = $_POST['section'];
-  $class_type = $_POST['class_type']; // pre-primary, primary, secondary
+  $grade = trim($_POST['grade']);
+  $section = trim($_POST['section']);
+  $class_type = $_POST['class_type'];
   $teacher_id = $_POST['class_teacher_id'];
+  
+  $errors = [];
+  
+  // Validate grade
+  $validGrades = ['nursery', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+  if (empty($grade)) {
+    $errors[] = "Grade cannot be empty.";
+  } elseif (!in_array(strtolower($grade), $validGrades)) {
+    $errors[] = "Grade must be between Nursery and 12.";
+  }
+  
+  // Validate section
+  if (empty($section)) {
+    $errors[] = "Section cannot be empty.";
+  } elseif (!preg_match('/^[a-zA-Z0-9]+$/', $section)) {
+    $errors[] = "Section can only contain letters and numbers.";
+  } elseif (strlen($section) > 5) {
+    $errors[] = "Section cannot exceed 5 characters.";
+  }
+  
+  // Validate class type
+  $validTypes = ['pre-primary', 'primary', 'secondary'];
+  if (empty($class_type) || !in_array($class_type, $validTypes)) {
+    $errors[] = "Invalid class type selected.";
+  }
+  
+  // Validate teacher
+  if (empty($teacher_id)) {
+    $errors[] = "Please select a class teacher.";
+  }
 
   // Verify teacher belongs to school
   $stmtCheck = $conn->prepare("SELECT full_name FROM teachers WHERE id = ? AND school_id = ?");
   $stmtCheck->bind_param("ii", $teacher_id, $school_id);
   $stmtCheck->execute();
   $result = $stmtCheck->get_result();
-  if ($result->num_rows === 0)
-    die("Invalid class teacher.");
-  $teacher = $result->fetch_assoc();
-  // $class_teacher = $teacher['full_name'];
-
-  // Check if teacher is already assigned to another class
-  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE class_teacher_id = ? AND school_id = ?");
-  $stmtCheck->bind_param("ii", $teacher_id, $school_id);
+  if ($result->num_rows === 0) {
+    $errors[] = "Invalid class teacher selected.";
+  } else {
+    // Check if teacher is already assigned to another class
+    $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE class_teacher_id = ? AND school_id = ?");
+    $stmtCheck->bind_param("ii", $teacher_id, $school_id);
+    $stmtCheck->execute();
+    if ($stmtCheck->get_result()->num_rows > 0) {
+      $errors[] = "This teacher is already assigned as class teacher to another class.";
+    }
+  }
+  
+  // Check if class already exists
+  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE grade = ? AND section = ? AND school_id = ?");
+  $stmtCheck->bind_param("ssi", $grade, $section, $school_id);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows > 0) {
-    die("This teacher is already assigned as class teacher to another class.");
+    $errors[] = "A class with this grade and section already exists.";
   }
 
-  $stmt = $conn->prepare("INSERT INTO classes (grade, section, type, class_teacher_id, school_id) VALUES (?, ?, ?, ?, ?)");
-  $stmt->bind_param("ssssi", $grade, $section, $class_type, $teacher_id, $school_id);
-  $stmt->execute();
+  if (empty($errors)) {
+    $stmt = $conn->prepare("INSERT INTO classes (grade, section, type, class_teacher_id, school_id) VALUES (?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssii", $grade, $section, $class_type, $teacher_id, $school_id);
+    $stmt->execute();
 
-  $class_id = $conn->insert_id;
+    $class_id = $conn->insert_id;
 
-  $stmt = $conn->prepare("INSERT INTO sections (class_id, section_name, school_id) VALUES (?, ?, ?)");
-  $stmt->bind_param("iis", $class_id, $section, $school_id);
-  $stmt->execute();
+    $stmt = $conn->prepare("INSERT INTO sections (class_id, section_name, school_id) VALUES (?, ?, ?)");
+    $stmt->bind_param("isi", $class_id, $section, $school_id);
+    $stmt->execute();
 
-  header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id);
-  exit;
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id . "&success=Class added successfully");
+    exit;
+  } else {
+    $error_message = implode("<br>", $errors);
+    header("Location: " . $_SERVER['PHP_SELF'] . "?error=" . urlencode($error_message));
+    exit;
+  }
 }
 
 // Handle Delete Class
@@ -213,34 +363,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_class'])) {
     die("Unauthorized class delete.");
   }
 
-  // Delete related students
-  $stmt = $conn->prepare("DELETE FROM students WHERE class_id = ?");
-  $stmt->bind_param("i", $class_id);
-  $stmt->execute();
+  // Start transaction
+  $conn->begin_transaction();
 
-  // Delete related subjects
-  $stmt = $conn->prepare("DELETE FROM subjects WHERE class_id = ?");
-  $stmt->bind_param("i", $class_id);
-  $stmt->execute();
+  try {
+    // Delete related students
+    $stmt = $conn->prepare("DELETE FROM students WHERE class_id = ?");
+    $stmt->bind_param("i", $class_id);
+    $stmt->execute();
 
-  // Delete related sections
-  $stmt = $conn->prepare("DELETE FROM sections WHERE class_id = ?");
-  $stmt->bind_param("i", $class_id);
-  $stmt->execute();
+    // Delete related subjects
+    $stmt = $conn->prepare("DELETE FROM subjects WHERE class_id = ?");
+    $stmt->bind_param("i", $class_id);
+    $stmt->execute();
 
+    // Delete related sections
+    $stmt = $conn->prepare("DELETE FROM sections WHERE class_id = ?");
+    $stmt->bind_param("i", $class_id);
+    $stmt->execute();
 
-  // Delete related payments
-  $stmt = $conn->prepare("DELETE FROM payments WHERE class_id = ?");
-  $stmt->bind_param("i", $class_id);
-  $stmt->execute();
+    // Delete related payments
+    $stmt = $conn->prepare("DELETE FROM payments WHERE class_id = ?");
+    $stmt->bind_param("i", $class_id);
+    $stmt->execute();
 
-  // Delete the class itself
-  $stmt = $conn->prepare("DELETE FROM classes WHERE id = ?");
-  $stmt->bind_param("i", $class_id);
-  $stmt->execute();
+    // Delete the class itself
+    $stmt = $conn->prepare("DELETE FROM classes WHERE id = ?");
+    $stmt->bind_param("i", $class_id);
+    $stmt->execute();
 
-  header("Location: " . $_SERVER['PHP_SELF']);
-  exit;
+    $conn->commit();
+    header("Location: " . $_SERVER['PHP_SELF'] . "?success=Class deleted successfully");
+    exit;
+  } catch (Exception $e) {
+    $conn->rollback();
+    header("Location: " . $_SERVER['PHP_SELF'] . "?class_id=" . $class_id . "&error=Failed to delete class: " . urlencode($e->getMessage()));
+    exit;
+  }
 }
 
 // Fetch classes for this school
@@ -356,10 +515,49 @@ if ($selected_class_id) {
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
+    
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      border-radius: 8px;
+      color: white;
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+      max-width: 400px;
+    }
+    
+    .toast-success {
+      background-color: #10B981;
+    }
+    
+    .toast-error {
+      background-color: #EF4444;
+    }
+    
+    .toast-show {
+      opacity: 1;
+    }
   </style>
 </head>
 
 <body class="bg-gray-100 p-6">
+  <!-- Toast Notification -->
+  <?php if (isset($_GET['success'])): ?>
+    <div id="toast" class="toast toast-success">
+      <?= htmlspecialchars($_GET['success']) ?>
+    </div>
+  <?php endif; ?>
+  
+  <?php if (isset($_GET['error'])): ?>
+    <div id="toast" class="toast toast-error">
+      <?= htmlspecialchars($_GET['error']) ?>
+    </div>
+  <?php endif; ?>
+
   <div class="max-w-7xl mx-auto bg-white p-6 rounded-lg shadow space-y-8">
     <div class="flex justify-between items-center">
       <h1 class="text-3xl font-bold text-gray-800">📘 Manage Classes</h1>
@@ -493,7 +691,6 @@ if ($selected_class_id) {
       <?php endif; ?>
     </div>
 
-
     <div id="sections" class="tab-content mt-6 hidden">
       <?php if ($selected_class_id): ?>
         <p><strong>Current Section:</strong> <?= htmlspecialchars($class_data['section']) ?></p>
@@ -510,7 +707,7 @@ if ($selected_class_id) {
     onclick="closeOutside(event, 'addModal')">
     <div class="modal-transparent modal-glow-blue p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">➕ Add New Class</h2>
-      <form method="POST" action="" id="addClassForm">
+      <form method="POST" action="" id="addClassForm" onsubmit="return validateAddClassForm()">
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Grade</label>
           <input type="text" name="grade" id="grade" required
@@ -523,8 +720,7 @@ if ($selected_class_id) {
           <input type="text" name="section" id="section" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 placeholder-gray-500 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Enter Section (e.g., A)" />
-          <span id="sectionError" class="text-red-500 text-sm hidden">Section must be unique within the same
-            grade.</span>
+          <span id="sectionError" class="text-red-500 text-sm hidden">Section must be unique within the same grade and contain only letters/numbers.</span>
         </div>
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Class Type</label>
@@ -537,7 +733,7 @@ if ($selected_class_id) {
         </div>
         <div class="mb-6">
           <label class="block mb-1 font-semibold text-gray-700">Class Teacher</label>
-          <select name="class_teacher_id" required
+          <select name="class_teacher_id" id="classTeacher" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Select Teacher</option>
             <?php
@@ -552,7 +748,7 @@ if ($selected_class_id) {
             endwhile;
             ?>
           </select>
-
+          <span id="teacherError" class="text-red-500 text-sm hidden">Please select a teacher.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('addModal').classList.add('hidden')"
@@ -564,18 +760,18 @@ if ($selected_class_id) {
     </div>
   </div>
 
-
   <!-- Edit Section Modal (Green Glow) -->
   <div id="editSectionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
     onclick="closeOutside(event, 'editSectionModal')">
     <div class="modal-transparent modal-glow-green p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-gray-800 mb-4">✏️ Edit Section</h2>
-      <form method="POST" action="">
+      <form method="POST" action="" id="editSectionForm" onsubmit="return validateEditSectionForm()">
         <input type="hidden" name="class_id" value="<?= $selected_class_id ?>" />
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Section Name</label>
-          <input type="text" name="section_name" value="<?= htmlspecialchars($class_data['section'] ?? '') ?>" required
+          <input type="text" name="section_name" id="editSectionName" value="<?= htmlspecialchars($class_data['section'] ?? '') ?>" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <span id="editSectionError" class="text-red-500 text-sm hidden">Section name must be 1-10 characters and contain only letters/numbers.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('editSectionModal').classList.add('hidden')"
@@ -587,17 +783,16 @@ if ($selected_class_id) {
     </div>
   </div>
 
-
   <!-- Change Class Teacher Modal (Blue Glow) -->
   <div id="changeTeacherModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
     onclick="closeOutside(event, 'changeTeacherModal')">
     <div class="modal-transparent modal-glow-blue p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-gray-800 mb-4">👨‍🏫 Change Class Teacher</h2>
-      <form method="POST" action="">
+      <form method="POST" action="" id="changeTeacherForm" onsubmit="return validateChangeTeacherForm()">
         <input type="hidden" name="class_id" value="<?= $selected_class_id ?>" />
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Select Teacher</label>
-          <select name="teacher_id" required
+          <select name="teacher_id" id="newTeacherId" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Select Teacher</option>
             <?php
@@ -612,8 +807,8 @@ if ($selected_class_id) {
                 </option>
               <?php endif; ?>
             <?php endwhile; ?>
-
           </select>
+          <span id="teacherSelectError" class="text-red-500 text-sm hidden">Please select a teacher.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('changeTeacherModal').classList.add('hidden')"
@@ -630,16 +825,17 @@ if ($selected_class_id) {
     onclick="closeOutside(event, 'addSubjectModal')">
     <div class="modal-transparent modal-glow-green p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-gray-800 mb-4">➕ Add Subject</h2>
-      <form method="POST" action="">
+      <form method="POST" action="" id="addSubjectForm" onsubmit="return validateAddSubjectForm()">
         <input type="hidden" name="class_id" value="<?= $selected_class_id ?>" />
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Subject Name</label>
-          <input type="text" name="subject_name" required
+          <input type="text" name="subject_name" id="subjectName" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <span id="subjectNameError" class="text-red-500 text-sm hidden">Subject name must be 1-50 characters and contain only letters, numbers and spaces.</span>
         </div>
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Assign Teacher</label>
-          <select name="teacher_id" required
+          <select name="teacher_id" id="subjectTeacher" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500">
             <option value="">Select Teacher</option>
             <?php
@@ -648,13 +844,13 @@ if ($selected_class_id) {
               <option value="<?= $teacher['id'] ?>"><?= htmlspecialchars($teacher['full_name']) ?></option>
             <?php endwhile; ?>
           </select>
+          <span id="subjectTeacherError" class="text-red-500 text-sm hidden">Please select a teacher.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('addSubjectModal').classList.add('hidden')"
             class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 transition">Cancel</button>
           <button type="submit" name="add_subject"
-            class="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 shadow-lg transition">Add
-            Subject</button>
+            class="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 shadow-lg transition">Add Subject</button>
         </div>
       </form>
     </div>
@@ -665,16 +861,17 @@ if ($selected_class_id) {
     onclick="closeOutside(event, 'editSubjectModal')">
     <div class="modal-transparent modal-glow-green p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-gray-800 mb-4">✏️ Edit Subject</h2>
-      <form method="POST" action="">
+      <form method="POST" action="" id="editSubjectForm" onsubmit="return validateEditSubjectForm()">
         <input type="hidden" name="subject_id" id="editSubjectId" />
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Subject Name</label>
           <input type="text" name="subject_name" id="editSubjectName" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500" />
+          <span id="editSubjectNameError" class="text-red-500 text-sm hidden">Subject name must be 1-50 characters and contain only letters, numbers and spaces.</span>
         </div>
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Assign Teacher</label>
-          <select name="teacher_id" id="editSubjectTeacher" required
+          <select name="teacher_id" id="editSubjectTeacherId" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500">
             <option value="">Select Teacher</option>
             <?php
@@ -683,6 +880,7 @@ if ($selected_class_id) {
               <option value="<?= $teacher['id'] ?>"><?= htmlspecialchars($teacher['full_name']) ?></option>
             <?php endwhile; ?>
           </select>
+          <span id="editSubjectTeacherError" class="text-red-500 text-sm hidden">Please select a teacher.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('editSubjectModal').classList.add('hidden')"
@@ -699,14 +897,14 @@ if ($selected_class_id) {
     onclick="closeOutside(event, 'deleteClassModal')">
     <div class="modal-transparent modal-glow-red p-6 rounded-2xl w-full max-w-md" onclick="event.stopPropagation();">
       <h2 class="text-xl font-bold text-red-700 mb-4">❌ Confirm Delete Class</h2>
-      <p class="mb-6 text-gray-700">Are you sure you want to delete this class?</p>
+      <p class="mb-6 text-gray-700">Are you sure you want to delete this class? This action cannot be undone and will delete all associated students, subjects, and records.</p>
       <form method="POST" action="">
         <input type="hidden" name="delete_class" value="1" />
         <input type="hidden" name="class_id" value="<?= $selected_class_id ?>" />
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('deleteClassModal').classList.add('hidden')"
             class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 transition">Cancel</button>
-          <button type="submit"
+          <button type="submit" onclick="return confirm('Are you absolutely sure? This will permanently delete all class data.');"
             class="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 shadow-lg transition">Delete</button>
         </div>
       </form>
@@ -714,6 +912,15 @@ if ($selected_class_id) {
   </div>
 
   <script>
+    // Show toast notification
+    const toast = document.getElementById('toast');
+    if (toast) {
+      toast.classList.add('toast-show');
+      setTimeout(() => {
+        toast.classList.remove('toast-show');
+      }, 5000);
+    }
+
     function closeOutside(event, modalId) {
       if (event.target.id === modalId) {
         document.getElementById(modalId).classList.add('hidden');
@@ -754,44 +961,215 @@ if ($selected_class_id) {
     function openEditSubjectModal(id, name, teacherId) {
       document.getElementById('editSubjectId').value = id;
       document.getElementById('editSubjectName').value = name;
-      document.getElementById('editSubjectTeacher').value = teacherId;
+      document.getElementById('editSubjectTeacherId').value = teacherId;
       document.getElementById('editSubjectModal').classList.remove('hidden');
+      
+      // Trigger validation for the opened modal
+      validateEditSubjectName();
+      validateEditSubjectTeacher();
     }
 
-    const form = document.getElementById('addClassForm');
-    const gradeField = document.getElementById('grade');
-    const sectionField = document.getElementById('section');
-    const gradeError = document.getElementById('gradeError');
-    const sectionError = document.getElementById('sectionError');
-
-    // PHP array converted to JavaScript
-    const existingCombinations = <?= json_encode($existingClassPairs) ?>;
-
-    form.addEventListener('submit', function (event) {
-      const grade = gradeField.value.trim().toLowerCase();
-      const section = sectionField.value.trim().toLowerCase();
-      let valid = true;
-
-      // Grade check: should be Nursery or 1-12
+    // Validation Functions
+    function validateGrade() {
+      const grade = document.getElementById('grade').value.trim().toLowerCase();
       const validGrades = ['nursery', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-      if (!validGrades.includes(grade)) {
-        gradeError.classList.remove('hidden');
-        valid = false;
-      } else {
-        gradeError.classList.add('hidden');
+      const isValid = validGrades.includes(grade);
+      
+      if (grade === '') {
+        document.getElementById('gradeError').classList.add('hidden');
+        return false;
       }
+      
+      document.getElementById('gradeError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
 
-      // Allow duplicate sections in different grades but not same grade + section
-      const duplicate = existingCombinations.some(pair => pair.grade === grade && pair.section === section);
-      if (duplicate || section === '') {
-        sectionError.classList.remove('hidden');
-        valid = false;
-      } else {
-        sectionError.classList.add('hidden');
+    function validateSection() {
+      const section = document.getElementById('section').value.trim();
+      const isValid = /^[a-zA-Z0-9]{1,5}$/.test(section);
+      
+      if (section === '') {
+        document.getElementById('sectionError').classList.add('hidden');
+        return false;
       }
+      
+      document.getElementById('sectionError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
 
-      if (!valid) event.preventDefault();
+    function validateClassTeacher() {
+      const teacher = document.getElementById('classTeacher').value;
+      const isValid = teacher !== '';
+      
+      document.getElementById('teacherError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateEditSectionName() {
+      const sectionName = document.getElementById('editSectionName').value.trim();
+      const isValid = /^[a-zA-Z0-9]{1,10}$/.test(sectionName);
+      
+      if (sectionName === '') {
+        document.getElementById('editSectionError').classList.add('hidden');
+        return false;
+      }
+      
+      document.getElementById('editSectionError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateNewTeacher() {
+      const teacherId = document.getElementById('newTeacherId').value;
+      const isValid = teacherId !== '';
+      
+      document.getElementById('teacherSelectError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateSubjectName() {
+      const subjectName = document.getElementById('subjectName').value.trim();
+      const isValid = /^[a-zA-Z0-9 ]{1,50}$/.test(subjectName);
+      
+      if (subjectName === '') {
+        document.getElementById('subjectNameError').classList.add('hidden');
+        return false;
+      }
+      
+      document.getElementById('subjectNameError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateSubjectTeacher() {
+      const teacherId = document.getElementById('subjectTeacher').value;
+      const isValid = teacherId !== '';
+      
+      document.getElementById('subjectTeacherError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateEditSubjectName() {
+      const subjectName = document.getElementById('editSubjectName').value.trim();
+      const isValid = /^[a-zA-Z0-9 ]{1,50}$/.test(subjectName);
+      
+      if (subjectName === '') {
+        document.getElementById('editSubjectNameError').classList.add('hidden');
+        return false;
+      }
+      
+      document.getElementById('editSubjectNameError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    function validateEditSubjectTeacher() {
+      const teacherId = document.getElementById('editSubjectTeacherId').value;
+      const isValid = teacherId !== '';
+      
+      document.getElementById('editSubjectTeacherError').classList.toggle('hidden', isValid);
+      return isValid;
+    }
+
+    // Form Validation Functions
+    function validateAddClassForm() {
+      const gradeValid = validateGrade();
+      const sectionValid = validateSection();
+      const teacherValid = validateClassTeacher();
+      
+      return gradeValid && sectionValid && teacherValid;
+    }
+    
+    function validateEditSectionForm() {
+      return validateEditSectionName();
+    }
+    
+    function validateChangeTeacherForm() {
+      return validateNewTeacher();
+    }
+    
+    function validateAddSubjectForm() {
+      const nameValid = validateSubjectName();
+      const teacherValid = validateSubjectTeacher();
+      
+      return nameValid && teacherValid;
+    }
+    
+    function validateEditSubjectForm() {
+      const nameValid = validateEditSubjectName();
+      const teacherValid = validateEditSubjectTeacher();
+      
+      return nameValid && teacherValid;
+    }
+    
+    // Add real-time validation event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+      // Add Class Form
+      document.getElementById('grade').addEventListener('keyup', validateGrade);
+      document.getElementById('grade').addEventListener('change', validateGrade);
+      
+      document.getElementById('section').addEventListener('keyup', validateSection);
+      document.getElementById('section').addEventListener('change', validateSection);
+      
+      document.getElementById('classTeacher').addEventListener('change', validateClassTeacher);
+      
+      // Edit Section Form
+      document.getElementById('editSectionName').addEventListener('keyup', validateEditSectionName);
+      document.getElementById('editSectionName').addEventListener('change', validateEditSectionName);
+      
+      // Change Teacher Form
+      document.getElementById('newTeacherId').addEventListener('change', validateNewTeacher);
+      
+      // Add Subject Form
+      document.getElementById('subjectName').addEventListener('keyup', validateSubjectName);
+      document.getElementById('subjectName').addEventListener('change', validateSubjectName);
+      
+      document.getElementById('subjectTeacher').addEventListener('change', validateSubjectTeacher);
+      
+      // Edit Subject Form
+      document.getElementById('editSubjectName').addEventListener('keyup', validateEditSubjectName);
+      document.getElementById('editSubjectName').addEventListener('change', validateEditSubjectName);
+      
+      document.getElementById('editSubjectTeacherId').addEventListener('change', validateEditSubjectTeacher);
+      
+      // Initialize validation for any pre-filled values when modals open
+      document.getElementById('addModal').addEventListener('shown', function() {
+        validateGrade();
+        validateSection();
+        validateClassTeacher();
+      });
+      
+      document.getElementById('editSectionModal').addEventListener('shown', validateEditSectionName);
+      document.getElementById('changeTeacherModal').addEventListener('shown', validateNewTeacher);
+      document.getElementById('addSubjectModal').addEventListener('shown', function() {
+        validateSubjectName();
+        validateSubjectTeacher();
+      });
+      document.getElementById('editSubjectModal').addEventListener('shown', function() {
+        validateEditSubjectName();
+        validateEditSubjectTeacher();
+      });
     });
+
+    // Polyfill for 'shown' event if needed
+    if (!('shown' in document.createElement('div'))) {
+      const modals = document.querySelectorAll('[id$="Modal"]');
+      modals.forEach(modal => {
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.attributeName === 'class') {
+              const isHidden = mutation.target.classList.contains('hidden');
+              if (!isHidden) {
+                const event = new Event('shown');
+                mutation.target.dispatchEvent(event);
+              }
+            }
+          });
+        });
+        
+        observer.observe(modal, {
+          attributes: true,
+          attributeFilter: ['class']
+        });
+      });
+    }
   </script>
 </body>
 

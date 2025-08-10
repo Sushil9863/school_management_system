@@ -9,7 +9,6 @@ if (!$school_id) {
     die("Invalid access: School not identified.");
 }
 
-
 function custom_hash($password) {
     $salt = 'XyZ@2025!abc123';
     $rounds = 3;
@@ -33,26 +32,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'add') {
-    $full_name = $_POST['full_name'];
-    $address = $_POST['address'];
-    $phone = $_POST['phone'];
-    $email = $_POST['email'];
-    $username = $_POST['username'];
-    $password = custom_hash($_POST['password']);
+        $full_name = $_POST['full_name'];
+        $address = $_POST['address'];
+        $phone = $_POST['phone'];
+        $email = $_POST['email'];
+        $username = $_POST['username'];
+        $password = custom_hash($_POST['password']);
 
-    // Insert into users table first
-    $stmt2 = $conn->prepare("INSERT INTO users (school_id, username, type, password, email) VALUES (?, ?, 'teacher', ?, ?)");
-    $stmt2->bind_param("isss", $school_id, $username, $password, $email);
-    $stmt2->execute();
+        // Insert into users table first
+        $stmt2 = $conn->prepare("INSERT INTO users (school_id, username, type, password, email) VALUES (?, ?, 'teacher', ?, ?)");
+        $stmt2->bind_param("isss", $school_id, $username, $password, $email);
+        $stmt2->execute();
 
-    $user_id = $conn->insert_id; // Get the inserted user ID
+        $user_id = $conn->insert_id; // Get the inserted user ID
 
-    // Now insert into teachers table with user_id
-    $stmt1 = $conn->prepare("INSERT INTO teachers (user_id, full_name, address, phone, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt1->bind_param("issssssi", $user_id, $full_name, $address, $phone, $email, $username, $password, $school_id);
-    $stmt1->execute();
-}
-
+        // Now insert into teachers table with user_id
+        $stmt1 = $conn->prepare("INSERT INTO teachers (user_id, full_name, address, phone, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt1->bind_param("issssssi", $user_id, $full_name, $address, $phone, $email, $username, $password, $school_id);
+        $stmt1->execute();
+    }
 
     if ($action === 'edit') {
         $teacher_id = $_POST['teacher_id'];
@@ -142,6 +140,21 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
   <meta charset="UTF-8">
   <title>Manage Teachers</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .error-message {
+      color: #ef4444;
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+      display: none;
+    }
+    .input-error {
+      border-color: #ef4444 !important;
+      background-color: #fee2e2 !important;
+    }
+    .input-success {
+      border-color: #10b981 !important;
+    }
+  </style>
 </head>
 <body class="bg-gradient-to-r from-blue-100 to-purple-100 min-h-screen p-6">
   <div class="max-w-6xl mx-auto bg-white rounded-lg shadow p-6">
@@ -192,46 +205,64 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-xl transition duration-300 ease-in-out
       filter hover:brightness-110" onclick="event.stopPropagation();">
       <h2 id="modalTitle" class="text-2xl font-bold text-white mb-6 text-center">➕ Add Teacher</h2>
-      <form method="POST" class="space-y-4">
+      <form method="POST" class="space-y-4" id="teacherForm">
         <input type="hidden" name="action" id="formAction" value="add">
         <input type="hidden" name="teacher_id" id="teacher_id">
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-white font-medium mb-1">Full Name</label>
-            <input type="text" name="full_name" id="full_name" required class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="text" name="full_name" id="full_name" required 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validateFullName(this)" />
+            <div id="full_name_error" class="error-message">Full name must be 3-50 characters and contain only letters and spaces</div>
           </div>
           <div>
             <label class="block text-white font-medium mb-1">Address</label>
-            <input type="text" name="address" id="address" required class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="text" name="address" id="address" required 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validateAddress(this)" />
+            <div id="address_error" class="error-message">Address must be 5-100 characters</div>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-white font-medium mb-1">Phone</label>
-            <input type="text" name="phone" id="phone" required class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="text" name="phone" id="phone" required 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validatePhone(this)" />
+            <div id="phone_error" class="error-message">Phone must be 10-15 digits and valid</div>
           </div>
           <div>
             <label class="block text-white font-medium mb-1">Email</label>
-            <input type="email" name="email" id="email" required class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="email" name="email" id="email" required 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validateEmail(this)" />
+            <div id="email_error" class="error-message">Please enter a valid email address</div>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="authFields">
           <div>
             <label class="block text-white font-medium mb-1">Username</label>
-            <input type="text" name="username" id="username" class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="text" name="username" id="username" 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validateUsername(this)" />
+            <div id="username_error" class="error-message">Username must be 4-20 characters (letters, numbers, _)</div>
           </div>
           <div>
             <label class="block text-white font-medium mb-1">Password</label>
-            <input type="password" name="password" id="password" class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800" />
+            <input type="password" name="password" id="password" 
+                   class="w-full px-4 py-2 rounded bg-white/70 border border-white text-gray-800"
+                   onkeyup="validatePassword(this)" />
+            <div id="password_error" class="error-message">Password must be 8-20 characters with at least one uppercase, one lowercase, and one number</div>
           </div>
         </div>
 
         <div class="flex justify-end space-x-3 mt-4">
           <button type="button" onclick="closeAllModals()" class="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400 font-semibold">Cancel</button>
-          <button type="submit" class="px-6 py-2 rounded bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:scale-105 hover:shadow-xl font-semibold">Save</button>
+          <button type="submit" id="submitBtn" class="px-6 py-2 rounded bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:scale-105 hover:shadow-xl font-semibold">Save</button>
         </div>
       </form>
     </div>
@@ -242,7 +273,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     <div class="glass animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-md text-center transition duration-300 ease-in-out
       hover:ring-4 hover:ring-red-400 hover:ring-offset-2
       hover:shadow-[0_0_30px_rgba(220,38,38,0.6)] filter hover:brightness-110" onclick="event.stopPropagation();">
-      <form method="POST">
+      <form method="POST" id="deleteForm">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="teacher_id" id="delete_id">
         <h3 class="text-xl font-bold text-white mb-4">⚠️ Confirm Deletion</h3>
@@ -256,6 +287,115 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
   </div>
 
 <script>
+  // Validation patterns
+  const patterns = {
+    full_name: /^[a-zA-Z\s]{3,50}$/,
+    address: /^.{5,100}$/,
+    phone: /^[\d\s\-+]{10,15}$/,
+    email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    username: /^[a-zA-Z0-9_]{4,20}$/,
+    password: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,20}$/
+  };
+
+  // Validation messages
+  const validationMessages = {
+    full_name: "Full name must be 3-50 characters and contain only letters and spaces",
+    address: "Address must be 5-100 characters",
+    phone: "Phone must be 10-15 digits and valid",
+    email: "Please enter a valid email address",
+    username: "Username must be 4-20 characters (letters, numbers, _)",
+    password: "Password must be 8-20 characters with at least one uppercase, one lowercase, and one number"
+  };
+
+  // Validate field based on pattern
+  function validateField(field, pattern) {
+    const value = field.value.trim();
+    const errorElement = document.getElementById(`${field.id}_error`);
+    
+    if (value === '') {
+      field.classList.remove('input-success');
+      field.classList.remove('input-error');
+      errorElement.style.display = 'none';
+      return false;
+    }
+    
+    if (pattern.test(value)) {
+      field.classList.add('input-success');
+      field.classList.remove('input-error');
+      errorElement.style.display = 'none';
+      return true;
+    } else {
+      field.classList.add('input-error');
+      field.classList.remove('input-success');
+      errorElement.textContent = validationMessages[field.id];
+      errorElement.style.display = 'block';
+      return false;
+    }
+  }
+
+  // Individual validation functions for each field
+  function validateFullName(field) {
+    return validateField(field, patterns.full_name);
+  }
+
+  function validateAddress(field) {
+    return validateField(field, patterns.address);
+  }
+
+  function validatePhone(field) {
+    return validateField(field, patterns.phone);
+  }
+
+  function validateEmail(field) {
+    return validateField(field, patterns.email);
+  }
+
+  function validateUsername(field) {
+    return validateField(field, patterns.username);
+  }
+
+  function validatePassword(field) {
+    return validateField(field, patterns.password);
+  }
+
+  // Form validation before submission
+  function validateForm() {
+    let isValid = true;
+    
+    // Check all required fields based on form action
+    const formAction = document.getElementById('formAction').value;
+    
+    // Always validate these fields
+    isValid = validateFullName(document.getElementById('full_name')) && isValid;
+    isValid = validateAddress(document.getElementById('address')) && isValid;
+    isValid = validatePhone(document.getElementById('phone')) && isValid;
+    isValid = validateEmail(document.getElementById('email')) && isValid;
+    
+    // Only validate username/password for add action
+    if (formAction === 'add') {
+      isValid = validateUsername(document.getElementById('username')) && isValid;
+      isValid = validatePassword(document.getElementById('password')) && isValid;
+    }
+    
+    return isValid;
+  }
+
+  // Attach form validation to submit event
+  document.getElementById('teacherForm').addEventListener('submit', function(e) {
+    if (!validateForm()) {
+      e.preventDefault();
+      // Highlight all invalid fields
+      document.querySelectorAll('input').forEach(input => {
+        if (input.value.trim() === '' && input.required) {
+          input.classList.add('input-error');
+          const errorElement = document.getElementById(`${input.id}_error`);
+          errorElement.textContent = 'This field is required';
+          errorElement.style.display = 'block';
+        }
+      });
+    }
+  });
+
   function filterTeachers() {
     const filter = document.getElementById("searchInput").value.toLowerCase();
     const rows = document.querySelectorAll("table tbody tr");
@@ -287,6 +427,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     document.getElementById("username").value = "";
     document.getElementById("password").value = "";
     document.getElementById("authFields").classList.remove("hidden");
+    
+    // Reset validation states
+    document.querySelectorAll('.input-error, .input-success').forEach(el => {
+      el.classList.remove('input-error', 'input-success');
+    });
+    document.querySelectorAll('.error-message').forEach(el => {
+      el.style.display = 'none';
+    });
+    
     const modalBox = document.getElementById("modalBox");
     modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
     modalBox.classList.add("hover:ring-blue-400", "hover:shadow-[0_0_30px_rgba(59,130,246,0.6)]");
@@ -302,6 +451,15 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     document.getElementById("phone").value = data.phone;
     document.getElementById("email").value = data.email;
     document.getElementById("authFields").classList.add("hidden");
+    
+    // Reset validation states
+    document.querySelectorAll('.input-error, .input-success').forEach(el => {
+      el.classList.remove('input-error', 'input-success');
+    });
+    document.querySelectorAll('.error-message').forEach(el => {
+      el.style.display = 'none';
+    });
+    
     const modalBox = document.getElementById("modalBox");
     modalBox.className = modalBox.className.replace(/hover:ring-\w+-400.*? /, "");
     modalBox.classList.add("hover:ring-green-400", "hover:shadow-[0_0_30px_rgba(34,197,94,0.6)]");

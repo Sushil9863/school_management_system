@@ -5,7 +5,6 @@ require 'check_admin.php';
 
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
-
 $school_id = $_SESSION['school_id'] ?? 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -146,8 +145,7 @@ $parents = $stmt->get_result();
       </tbody>
     </table>
   </div>
-
-  <!-- Add/Edit Modal -->
+ <!-- Add/Edit Modal -->
   <div id="parentModal" onclick="closeModal(event)" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
     <div id="modalBox" class="animate-fade-in p-8 rounded-2xl shadow-2xl w-full max-w-2xl transition duration-300 ease-in-out hover:ring-offset-2 hover:ring-4 bg-white/30 backdrop-blur-md" onclick="event.stopPropagation();">
       <h2 id="modalTitle" class="text-2xl font-bold text-white mb-6 text-center">➕ Add Parent</h2>
