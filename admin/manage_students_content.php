@@ -1,6 +1,7 @@
 <?php
 require '../partials/dbconnect.php';
-require 'check_admin.php'; 
+require '../partials/algorithms.php';
+require 'check_admin.php';
 require '../vendor/autoload.php';
 use Dompdf\Dompdf;
 
@@ -27,21 +28,21 @@ $class_result = $class_stmt->get_result();
 // Handle POST actions for add/edit/delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $action = $_POST['action'] ?? '';
-  
+
   if ($action === 'add' || $action === 'edit') {
     $full_name = trim($_POST['full_name'] ?? '');
     $gender = $_POST['gender'] ?? '';
     $dob = $_POST['dob'] ?? '';
     $class_id = $_POST['class_id'] ?? '';
     $parent_id = $_POST['parent'] ?? '';
-    
+
     // Validate full name (only user-input field)
     if (empty($full_name)) {
       $errors['full_name'] = "Full name is required";
     } elseif (!preg_match('/^[a-zA-Z\s\-\.]{2,100}$/', $full_name)) {
       $errors['full_name'] = "Name must be 2-100 letters, spaces, hyphens or periods";
     }
-    
+
     // Validate date of birth (only user-input field)
     if (empty($dob)) {
       $errors['dob'] = "Date of birth is required";
@@ -50,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $today = new DateTime();
       $min_age = new DateTime('-3 years');
       $max_age = new DateTime('-18 years');
-      
+
       if (!$dob_date) {
         $errors['dob'] = "Invalid date format";
       } elseif ($dob_date > $min_age) {
@@ -59,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors['dob'] = "Student must be younger than 18 years";
       }
     }
-    
+
     // If no errors, proceed with database operation
     if (empty($errors)) {
       if ($action === 'add') {
@@ -177,19 +178,40 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       margin-top: 0.25rem;
       display: none;
     }
+
     .error-border {
       border-color: #ef4444 !important;
     }
+
     .success-border {
       border-color: #10b981 !important;
     }
+
     .input-error {
       animation: shake 0.5s;
     }
+
     @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-      20%, 40%, 60%, 80% { transform: translateX(5px); }
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      10%,
+      30%,
+      50%,
+      70%,
+      90% {
+        transform: translateX(-5px);
+      }
+
+      20%,
+      40%,
+      60%,
+      80% {
+        transform: translateX(5px);
+      }
     }
   </style>
 </head>
@@ -216,7 +238,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
           </option>
         <?php endwhile; ?>
       </select>
-      <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Search..."
+      <input type="text" id="searchInput" onkeyup="filterTable('searchInput', 'studentTable')" placeholder="Search..."
         class="px-4 py-2 border rounded flex-1" />
     </form>
 
@@ -234,7 +256,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       </thead>
       <tbody>
         <?php
-        $serial = 1; 
+        $serial = 1;
         while ($row = $students->fetch_assoc()):
           ?>
           <tr class="border-b hover:bg-gray-100">
@@ -243,7 +265,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <td class="py-2 px-4"><?= htmlspecialchars($row['gender']) ?></td>
             <td class="py-2 px-4"><?= htmlspecialchars($row['dob']) ?></td>
             <td class="py-2 px-4">Grade <?= htmlspecialchars($row['class_grade']) ?> -
-              <?= htmlspecialchars($row['class_section']) ?></td>
+              <?= htmlspecialchars($row['class_section']) ?>
+            </td>
             <td class="py-2 px-4"><?= htmlspecialchars($row['parent_name']) ?></td>
             <td class="py-2 px-4 text-center space-x-2">
               <button onclick='openEditModal(<?= json_encode($row) ?>)'
@@ -266,17 +289,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       <form method="POST" id="studentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-white">
         <input type="hidden" name="action" id="formAction" />
         <input type="hidden" name="student_id" id="student_id" />
-        
+
         <!-- Full Name Field -->
         <div class="form-group">
           <label>Full Name</label>
           <input type="text" name="full_name" id="full_name" required
-            class="w-full px-3 py-2 rounded bg-white/80 text-black" 
-            pattern="^[a-zA-Z\s\-\.]{2,100}$"
-            title="2-100 letters, spaces, hyphens or periods"/>
+            class="w-full px-3 py-2 rounded bg-white/80 text-black" pattern="^[a-zA-Z\s\-\.]{2,100}$"
+            title="2-100 letters, spaces, hyphens or periods" />
           <div id="full_name_error" class="error"></div>
         </div>
-        
+
         <!-- Gender Field (select - no validation) -->
         <div class="form-group">
           <label>Gender</label>
@@ -286,15 +308,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <option value="Female">Female</option>
           </select>
         </div>
-        
+
         <!-- Date of Birth Field -->
         <div class="form-group">
           <label>Date of Birth</label>
-          <input type="date" name="dob" id="dob" required 
-            class="w-full px-3 py-2 rounded bg-white/80 text-black" />
+          <input type="date" name="dob" id="dob" required class="w-full px-3 py-2 rounded bg-white/80 text-black" />
           <div id="dob_error" class="error"></div>
         </div>
-        
+
         <!-- Class Field (select - no validation) -->
         <div class="form-group">
           <label>Class</label>
@@ -308,7 +329,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <?php endwhile; ?>
           </select>
         </div>
-        
+
         <!-- Parent Field (select - no validation) -->
         <div class="form-group">
           <label>Parent</label>
@@ -322,7 +343,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <?php endwhile; ?>
           </select>
         </div>
-        
+
         <div class="col-span-2 flex justify-end space-x-2 mt-4">
           <button type="button" onclick="closeAllModals()" class="bg-gray-400 px-4 py-2 rounded">Cancel</button>
           <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
@@ -355,10 +376,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     const studentForm = document.getElementById('studentForm');
     const fullNameInput = document.getElementById('full_name');
     const dobInput = document.getElementById('dob');
-    
+
     // Validation patterns
     const nameRegex = /^[a-zA-Z\s\-\.]{5,100}$/;
-    
+
     // Open modal functions
     function openAddModal() {
       document.getElementById('formAction').value = 'add';
@@ -370,7 +391,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('parent').value = '';
       document.getElementById('modalTitle').innerText = '➕ Add Student';
       document.getElementById('studentModal').classList.remove('hidden');
-      
+
       // Clear any previous errors
       clearErrors();
     }
@@ -385,7 +406,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('parent').value = data.parent_id;
       document.getElementById('modalTitle').innerText = '✏️ Edit Student';
       document.getElementById('studentModal').classList.remove('hidden');
-      
+
       // Clear any previous errors
       clearErrors();
     }
@@ -405,49 +426,42 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       document.getElementById('deleteModal').classList.add('hidden');
     }
 
-    // Table filtering
-    function filterTable() {
-      const filter = document.getElementById("searchInput").value.toLowerCase();
-      const rows = document.querySelectorAll("#studentTable tbody tr");
-      rows.forEach(row => {
-        const name = row.querySelector("td:nth-child(2)").textContent.toLowerCase();
-        row.style.display = name.includes(filter) ? "" : "none";
-      });
-    }
+
+
 
     // Clear all error messages and styles
     function clearErrors() {
       document.getElementById('full_name_error').style.display = 'none';
       document.getElementById('dob_error').style.display = 'none';
-      
+
       fullNameInput.classList.remove('error-border', 'input-error');
       dobInput.classList.remove('error-border', 'input-error');
     }
 
     // Real-time validation for full name
-    fullNameInput.addEventListener('input', function() {
+    fullNameInput.addEventListener('input', function () {
       validateFullName();
     });
 
     // Real-time validation for date of birth
-    dobInput.addEventListener('change', function() {
+    dobInput.addEventListener('change', function () {
       validateDOB();
     });
 
     // Validate full name with regex
     function validateFullName() {
       const errorElement = document.getElementById('full_name_error');
-      
+
       if (!fullNameInput.value.trim()) {
         showError(fullNameInput, errorElement, 'Full name is required');
         return false;
       }
-      
+
       if (!nameRegex.test(fullNameInput.value)) {
         showError(fullNameInput, errorElement, 'Name is not valid');
         return false;
       }
-      
+
       clearError(fullNameInput, errorElement);
       return true;
     }
@@ -455,29 +469,29 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     // Validate date of birth
     function validateDOB() {
       const errorElement = document.getElementById('dob_error');
-      
+
       if (!dobInput.value) {
         showError(dobInput, errorElement, 'Date of birth is required');
         return false;
       }
-      
+
       const dobDate = new Date(dobInput.value);
       const today = new Date();
       const minAgeDate = new Date();
       minAgeDate.setFullYear(today.getFullYear() - 3);
       const maxAgeDate = new Date();
       maxAgeDate.setFullYear(today.getFullYear() - 18);
-      
+
       if (dobDate > minAgeDate) {
         showError(dobInput, errorElement, 'Student must be at least 3 years old');
         return false;
       }
-      
+
       if (dobDate < maxAgeDate) {
         showError(dobInput, errorElement, 'Student must be younger than 18 years');
         return false;
       }
-      
+
       clearError(dobInput, errorElement);
       return true;
     }
@@ -487,7 +501,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
       inputElement.classList.add('error-border', 'input-error');
       errorElement.textContent = message;
       errorElement.style.display = 'block';
-      
+
       // Remove shake animation after it completes
       setTimeout(() => {
         inputElement.classList.remove('input-error');
@@ -502,13 +516,13 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     }
 
     // Form submission validation
-    studentForm.addEventListener('submit', function(e) {
+    studentForm.addEventListener('submit', function (e) {
       e.preventDefault();
-      
+
       // Validate all fields
       const isFullNameValid = validateFullName();
       const isDOBValid = validateDOB();
-      
+
       // If all valid, submit the form
       if (isFullNameValid && isDOBValid) {
         this.submit();
@@ -522,26 +536,27 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     });
 
     // Delete confirmation with double-check
-    deleteForm.addEventListener('submit', function(e) {
+    deleteForm.addEventListener('submit', function (e) {
       if (!confirm('Are you absolutely sure you want to delete this student? This cannot be undone.')) {
         e.preventDefault();
       }
     });
 
     // Initialize date picker with reasonable limits
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       const today = new Date();
       const minDate = new Date();
       minDate.setFullYear(today.getFullYear() - 18);
       const maxDate = new Date();
       maxDate.setFullYear(today.getFullYear() - 3);
-      
+
       if (dobInput) {
         dobInput.min = minDate.toISOString().split('T')[0];
         dobInput.max = maxDate.toISOString().split('T')[0];
       }
     });
   </script>
+  <script src="../partials/algorithms.js"></script>
 </body>
 
 </html>

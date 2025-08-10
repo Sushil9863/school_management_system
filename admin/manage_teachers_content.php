@@ -167,11 +167,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     </div>
 
     <div class="mb-4">
-      <input type="text" id="searchInput" onkeyup="filterTeachers()" placeholder="Search by name..."
+      <input type="text" id="searchInput" onkeyup="filterTable('searchInput','teacherTable')" placeholder="Search by name..."
         class="w-full md:w-64 px-4 py-2 rounded border border-gray-300 shadow-sm">
     </div>
 
-    <table class="min-w-full bg-white border text-sm">
+    <table id= "teacherTable" class="min-w-full bg-white border text-sm">
       <thead class="bg-gray-100 text-gray-600 uppercase">
         <tr>
           <th class="py-3 px-6 text-left">Full Name</th>
@@ -396,15 +396,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     }
   });
 
-  function filterTeachers() {
-    const filter = document.getElementById("searchInput").value.toLowerCase();
-    const rows = document.querySelectorAll("table tbody tr");
-    rows.forEach(row => {
-      const name = row.querySelector("td").textContent.toLowerCase();
-      row.style.display = name.includes(filter) ? "" : "none";
-    });
-  }
-
   function closeModal(e) {
     if (e.target.id === "teacherModal" || e.target.id === "deleteModal") {
       e.target.classList.add("hidden");
@@ -471,5 +462,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     document.getElementById("deleteModal").classList.remove("hidden");
   }
 </script>
+<script src="../partials/algorithms.js"></script>
 </body>
 </html>
