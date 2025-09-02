@@ -42,6 +42,8 @@ include_once 'config.php';
               Dashboard</a></li>
           <li><a href="<?= BASE_URL ?>/teacher/view_classes.php" class="block px-6 py-3 hover:bg-gray-200">🏫
               Classes</a></li>
+          <li><a href="<?= BASE_URL ?>/teacher/manage_attendance.php" class="block px-6 py-3 hover:bg-gray-200">🙋‍♀️
+              Attendance</a></li>
           <li><a href="<?= BASE_URL ?>/teacher/view_exams.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Exam</a>
           </li>
           <li><a href="<?= BASE_URL ?>/teacher/view_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Result</a>
