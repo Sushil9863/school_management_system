@@ -14,6 +14,7 @@ include_once 'config.php';
   <meta charset="UTF-8" />
   <title><?= htmlspecialchars($pageTitle ?? 'Dashboard') ?></title>
   <script src="https://cdn.tailwindcss.com"></script>
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <style>
     body{
@@ -49,6 +50,7 @@ include_once 'config.php';
           <li><a href="<?= BASE_URL ?>/teacher/view_results.php" class="block px-6 py-3 hover:bg-gray-200">🏫 Result</a>
           </li>
           <li><a href="<?= BASE_URL ?>/a_settings.php" class="block px-6 py-3 hover:bg-gray-200">⚙️ Settings</a></li>
+          <li><a href="<?= BASE_URL ?>/messages.php" class="block px-6 py-3 hover:bg-gray-200"><i class="fas fa-comments text-s mr-3"></i> Messages</a></li>
           <li>
             <button onclick="showLogoutModal()" class="w-full text-left px-6 py-3 hover:bg-gray-200">🚪 Logout</button>
           </li>

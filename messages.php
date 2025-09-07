@@ -8,16 +8,10 @@ if (!isset($_SESSION['username']) || !isset($_SESSION['user_type'])) {
 }
 
 // include 'partials/config.php';
-$pageTitle = "Settings";
-$contentFile = 'a_settings_content.php'; 
+$pageTitle = "Messages";
+$contentFile = 'messages_content.php'; 
 
 switch ($_SESSION['user_type']) {
-    case 'superadmin':
-        include 'partials/layout_superadmin.php';
-        break;
-        case 'admin':
-        include 'partials/layout_admin.php';
-        break;
         case 'teacher':
         include 'partials/layout_teacher.php';
         break;

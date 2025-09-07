@@ -92,20 +92,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Start transaction
                 $conn->begin_transaction();
                 
-                // Insert into parents table
-                $stmt1 = $conn->prepare("INSERT INTO parents (full_name, contact, address, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt1->bind_param("ssssssi", $full_name, $contact, $address, $email, $username, $password_hash, $school_id);
-                
-                if (!$stmt1->execute()) {
-                    throw new Exception("Parent insert failed: " . $stmt1->error);
-                }
-                
-                // Insert into users table
+                // FIRST: Insert into users table
                 $stmt2 = $conn->prepare("INSERT INTO users (username, type, password, email, school_id) VALUES (?, 'parent', ?, ?, ?)");
                 $stmt2->bind_param("sssi", $username, $password_hash, $email, $school_id);
                 
                 if (!$stmt2->execute()) {
                     throw new Exception("User insert failed: " . $stmt2->error);
+                }
+                
+                // Get the inserted user ID
+                $user_id = $conn->insert_id;
+                
+                // THEN: Insert into parents table with the user_id
+                $stmt1 = $conn->prepare("INSERT INTO parents (user_id, full_name, contact, address, email, username, password, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt1->bind_param("issssssi", $user_id, $full_name, $contact, $address, $email, $username, $password_hash, $school_id);
+                
+                if (!$stmt1->execute()) {
+                    throw new Exception("Parent insert failed: " . $stmt1->error);
                 }
                 
                 // Commit transaction
@@ -138,12 +141,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($errors)) {
+            // Get the user_id for this parent
+            $get_user_id = $conn->prepare("SELECT user_id FROM parents WHERE id=? AND school_id=?");
+            $get_user_id->bind_param("ii", $id, $school_id);
+            $get_user_id->execute();
+            $user_id_result = $get_user_id->get_result()->fetch_assoc();
+            $user_id = $user_id_result['user_id'] ?? 0;
+            
+            // Update parents table
             $stmt = $conn->prepare("UPDATE parents SET full_name=?, contact=?, address=?, email=?, username=? WHERE id=? AND school_id=?");
             $stmt->bind_param("sssssii", $full_name, $contact, $address, $email, $username, $id, $school_id);
             $stmt->execute();
 
-            $stmt2 = $conn->prepare("UPDATE users SET email=?, username=? WHERE username=(SELECT username FROM parents WHERE id=? AND school_id=?) AND school_id=?");
-            $stmt2->bind_param("ssiii", $email, $username, $id, $school_id, $school_id);
+            // Update users table using the user_id
+            $stmt2 = $conn->prepare("UPDATE users SET email=?, username=? WHERE id=? AND school_id=?");
+            $stmt2->bind_param("ssii", $email, $username, $user_id, $school_id);
             $stmt2->execute();
 
             $success_message = "Parent updated successfully";
@@ -152,16 +164,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete') {
         $id = $_POST['parent_id'] ?? 0;
-        $res = $conn->prepare("SELECT username FROM parents WHERE id=? AND school_id=?");
-        $res->bind_param("ii", $id, $school_id);
-        $res->execute();
-        $username = $res->get_result()->fetch_assoc()['username'] ?? '';
+        
+        // Get the user_id for this parent
+        $get_ids = $conn->prepare("SELECT user_id, username FROM parents WHERE id=? AND school_id=?");
+        $get_ids->bind_param("ii", $id, $school_id);
+        $get_ids->execute();
+        $ids_result = $get_ids->get_result()->fetch_assoc();
+        $user_id = $ids_result['user_id'] ?? 0;
+        $username = $ids_result['username'] ?? '';
 
-        if ($username) {
-            $stmtDelUser = $conn->prepare("DELETE FROM users WHERE username=? AND type='parent' AND school_id=?");
-            $stmtDelUser->bind_param("si", $username, $school_id);
+        if ($user_id) {
+            // Delete from users table using user_id
+            $stmtDelUser = $conn->prepare("DELETE FROM users WHERE id=? AND type='parent' AND school_id=?");
+            $stmtDelUser->bind_param("ii", $user_id, $school_id);
             $stmtDelUser->execute();
 
+            // Delete from parents table
             $stmtDelParent = $conn->prepare("DELETE FROM parents WHERE id=? AND school_id=?");
             $stmtDelParent->bind_param("ii", $id, $school_id);
             $stmtDelParent->execute();

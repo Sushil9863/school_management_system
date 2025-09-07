@@ -8,8 +8,5 @@
         Created with ❤️ by Sushil Lamichhane and Darshan Bhattarai.
       </p>
     </div>
-    <div>
-      <p class="text-sm">Powered by PHP, Tailwind CSS, Chat GPT and DeepSeek✌️</p>
-    </div>
   </div>
 </footer>
