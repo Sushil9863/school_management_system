@@ -8,7 +8,7 @@ if (!$school_id) {
 }
 
 $assigned_teachers = [];
-$res = $conn->query("SELECT class_teacher_id FROM classes WHERE class_teacher_id IS NOT NULL");
+$res = $conn->query("SELECT class_teacher_id FROM classes WHERE class_teacher_id IS NOT NULL AND school_id = $school_id");
 while ($row = $res->fetch_assoc()) {
   $assigned_teachers[] = $row['class_teacher_id'];
 }
@@ -35,8 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_section'])) {
   
   if (empty($new_section_name)) {
     $errors[] = "Section name cannot be empty.";
-  } elseif (!preg_match('/^[a-zA-Z0-9 ]+$/', $new_section_name)) {
-    $errors[] = "Section name can only contain letters, numbers and spaces.";
+  } elseif (!preg_match('/^[a-zA-Z0-9]+$/', $new_section_name)) {
+    $errors[] = "Section name can only contain letters and numbers.";
   } elseif (strlen($new_section_name) > 10) {
     $errors[] = "Section name cannot exceed 10 characters.";
   }
@@ -53,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_section'])) {
     $classData = $classResult->fetch_assoc();
     $grade = $classData['grade'];
     
-    // Check if section already exists for this grade
-    $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE grade = ? AND section = ? AND school_id = ? AND id != ?");
+    // Check if section already exists for this grade (case-insensitive)
+    $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE LOWER(grade) = LOWER(?) AND LOWER(section) = LOWER(?) AND school_id = ? AND id != ?");
     $stmtCheck->bind_param("ssii", $grade, $new_section_name, $school_id, $class_id);
     $stmtCheck->execute();
     if ($stmtCheck->get_result()->num_rows > 0) {
@@ -168,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_subject'])) {
   }
   
   // Check if subject already exists for this class
-  $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND name = ?");
+  $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND LOWER(name) = LOWER(?)");
   $stmtCheck->bind_param("is", $class_id, $subject_name);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows > 0) {
@@ -221,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_subject'])) {
     $class_id = $subjectData['class_id'];
     
     // Check if subject name already exists for this class (excluding current subject)
-    $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND name = ? AND id != ?");
+    $stmtCheck = $conn->prepare("SELECT id FROM subjects WHERE class_id = ? AND LOWER(name) = LOWER(?) AND id != ?");
     $stmtCheck->bind_param("isi", $class_id, $subject_name, $subject_id);
     $stmtCheck->execute();
     if ($stmtCheck->get_result()->num_rows > 0) {
@@ -291,8 +291,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_class'])) {
     $errors[] = "Section cannot be empty.";
   } elseif (!preg_match('/^[a-zA-Z0-9]+$/', $section)) {
     $errors[] = "Section can only contain letters and numbers.";
-  } elseif (strlen($section) > 5) {
-    $errors[] = "Section cannot exceed 5 characters.";
+  } elseif (strlen($section) > 10) {
+    $errors[] = "Section cannot exceed 10 characters.";
   }
   
   // Validate class type
@@ -323,12 +323,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_class'])) {
     }
   }
   
-  // Check if class already exists
-  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE grade = ? AND section = ? AND school_id = ?");
+  // Check if class already exists (case-insensitive)
+  $stmtCheck = $conn->prepare("SELECT id FROM classes WHERE LOWER(grade) = LOWER(?) AND LOWER(section) = LOWER(?) AND school_id = ?");
   $stmtCheck->bind_param("ssi", $grade, $section, $school_id);
   $stmtCheck->execute();
   if ($stmtCheck->get_result()->num_rows > 0) {
-    $errors[] = "A class with this grade and section already exists.";
+    $errors[] = "A class with grade '$grade' and section '$section' already exists.";
   }
 
   if (empty($errors)) {
@@ -541,6 +541,14 @@ if ($selected_class_id) {
     .toast-show {
       opacity: 1;
     }
+
+    /* Button spacing fix for responsive */
+    .space-x-2 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
   </style>
 </head>
 
@@ -719,8 +727,8 @@ if ($selected_class_id) {
           <label class="block mb-1 font-semibold text-gray-700">Section</label>
           <input type="text" name="section" id="section" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 placeholder-gray-500 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter Section (e.g., A)" />
-          <span id="sectionError" class="text-red-500 text-sm hidden">Section must be unique within the same grade and contain only letters/numbers.</span>
+            placeholder="Enter Section (e.g., A, B, 1)" />
+          <span id="sectionError" class="text-red-500 text-sm hidden">Section must be 1-10 characters and contain only letters and numbers.</span>
         </div>
         <div class="mb-4">
           <label class="block mb-1 font-semibold text-gray-700">Class Type</label>
@@ -771,7 +779,7 @@ if ($selected_class_id) {
           <label class="block mb-1 font-semibold text-gray-700">Section Name</label>
           <input type="text" name="section_name" id="editSectionName" value="<?= htmlspecialchars($class_data['section'] ?? '') ?>" required
             class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-70 text-gray-800 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500" />
-          <span id="editSectionError" class="text-red-500 text-sm hidden">Section name must be 1-10 characters and contain only letters/numbers.</span>
+          <span id="editSectionError" class="text-red-500 text-sm hidden">Section name must be 1-10 characters and contain only letters and numbers.</span>
         </div>
         <div class="flex justify-end space-x-4">
           <button type="button" onclick="document.getElementById('editSectionModal').classList.add('hidden')"
@@ -986,7 +994,7 @@ if ($selected_class_id) {
 
     function validateSection() {
       const section = document.getElementById('section').value.trim();
-      const isValid = /^[a-zA-Z0-9]{1,5}$/.test(section);
+      const isValid = /^[a-zA-Z0-9]{1,10}$/.test(section);
       
       if (section === '') {
         document.getElementById('sectionError').classList.add('hidden');
@@ -1128,49 +1136,7 @@ if ($selected_class_id) {
       document.getElementById('editSubjectName').addEventListener('change', validateEditSubjectName);
       
       document.getElementById('editSubjectTeacherId').addEventListener('change', validateEditSubjectTeacher);
-      
-      // Initialize validation for any pre-filled values when modals open
-      document.getElementById('addModal').addEventListener('shown', function() {
-        validateGrade();
-        validateSection();
-        validateClassTeacher();
-      });
-      
-      document.getElementById('editSectionModal').addEventListener('shown', validateEditSectionName);
-      document.getElementById('changeTeacherModal').addEventListener('shown', validateNewTeacher);
-      document.getElementById('addSubjectModal').addEventListener('shown', function() {
-        validateSubjectName();
-        validateSubjectTeacher();
-      });
-      document.getElementById('editSubjectModal').addEventListener('shown', function() {
-        validateEditSubjectName();
-        validateEditSubjectTeacher();
-      });
     });
-
-    // Polyfill for 'shown' event if needed
-    if (!('shown' in document.createElement('div'))) {
-      const modals = document.querySelectorAll('[id$="Modal"]');
-      modals.forEach(modal => {
-        const observer = new MutationObserver(function(mutations) {
-          mutations.forEach(function(mutation) {
-            if (mutation.attributeName === 'class') {
-              const isHidden = mutation.target.classList.contains('hidden');
-              if (!isHidden) {
-                const event = new Event('shown');
-                mutation.target.dispatchEvent(event);
-              }
-            }
-          });
-        });
-        
-        observer.observe(modal, {
-          attributes: true,
-          attributeFilter: ['class']
-        });
-      });
-    }
   </script>
 </body>
-
 </html>

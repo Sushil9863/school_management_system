@@ -158,43 +158,51 @@
     $result = $stmt->get_result();
 
     if ($result && $result->num_rows > 0) {
-    $row = $result->fetch_assoc();
+      $row = $result->fetch_assoc();
 
-    // Set session values
-    $_SESSION['user_id'] = $row['id'];
-    $_SESSION['username'] = $row['username'];
-    $_SESSION['user_type'] = $row['type'];
-    $_SESSION['school_id'] = $row['school_id'];
+      // Set session values
+      $_SESSION['user_id'] = $row['id'];
+      $_SESSION['username'] = $row['username'];
+      $_SESSION['user_type'] = $row['type'];
+      $_SESSION['school_id'] = $row['school_id'];
 
-    // Log the login
-    $user_id = $row['id'];
-    $school_id = $row['school_id'];
-    $conn->query("INSERT INTO login_logs (user_id, school_id) VALUES ($user_id, $school_id)");
 
-    // Redirect based on user type
-    switch ($row['type']) {
+      // Redirect based on user type
+      switch ($row['type']) {
         case 'superadmin':
-            header("Location: superadmin/superadmin_dashboard.php");
-            break;
+          header("Location: superadmin/superadmin_dashboard.php");
+          break;
         case 'admin':
-            header("Location: admin/admin_dashboard.php");
-            break;
+          // Log the login
+          $user_id = $row['id'];
+          $school_id = $row['school_id'];
+          $conn->query("INSERT INTO login_logs (user_id, school_id) VALUES ($user_id, $school_id)");
+          header("Location: admin/admin_dashboard.php");
+          break;
         case 'teacher':
-            header("Location: teacher/teacher_dashboard.php");
-            break;
+          // Log the login
+          $user_id = $row['id'];
+          $school_id = $row['school_id'];
+          $conn->query("INSERT INTO login_logs (user_id, school_id) VALUES ($user_id, $school_id)");
+          header("Location: teacher/teacher_dashboard.php");
+          break;
         case 'parent':
-            header("Location: parents/parents_dashboard.php");
-            break;
+          // Log the login
+          $user_id = $row['id'];
+          $school_id = $row['school_id'];
+          $conn->query("INSERT INTO login_logs (user_id, school_id) VALUES ($user_id, $school_id)");
+          header("Location: parents/parents_dashboard.php");
+          break;
         case 'accountant':
-            header("Location: accountant/accountant_dashboard.php");
-            break;
+          header("Location: accountant/accountant_dashboard.php");
+          break;
         default:
-            echo "Invalid user type.";
+          echo "Invalid user type.";
+      }
+      exit();
+    } else {
+      echo "<script>alert('Invalid username or password');</script>";
     }
-    exit();
-} else {
-    echo "<script>alert('Invalid username or password');</script>";
-}
 
 
     $stmt->close();
